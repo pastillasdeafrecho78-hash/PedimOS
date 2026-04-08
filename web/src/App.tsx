@@ -382,7 +382,7 @@ export function App() {
               <div className="badge">PedimOS</div>
               <strong>{menu?.restaurante?.nombre ?? "Pide lo que se te antoje"}</strong>
             </div>
-            <div className="follow-chip">Siguenos y descubre promos del día</div>
+                <div className="follow-chip">Cuenta+Reservas v2 activas · Siguenos y descubre promos del dia</div>
           </div>
           <nav className="tab-grid">
             {tabs.map((tab) => (
