@@ -13,6 +13,50 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
   const authGuard = new IntegrationAuthGuard(repository);
   const ingestionService = new OrderIngestionService(repository);
 
+  app.get("/", async (_request, reply) => {
+    return reply.status(200).send({
+      success: true,
+      data: {
+        service: "recivimos-backend",
+        status: "ok"
+      }
+    });
+  });
+
+  app.get("/health", async (_request, reply) => {
+    return reply.status(200).send({
+      success: true,
+      data: { status: "ok" }
+    });
+  });
+
+  app.get("/api/public/integraciones/pedidos/contract", async (_request, reply) => {
+    return reply.status(200).send({
+      success: true,
+      data: {
+        createOrder: {
+          endpoint: "/api/public/integraciones/pedidos/orders",
+          method: "POST",
+          headers: {
+            "x-api-key": "string",
+            "x-restaurante-slug": "string",
+            "x-idempotency-key": "string",
+            "x-api-version": "v1 (optional)",
+            "x-correlation-id": "string (optional)"
+          }
+        },
+        getOrderStatus: {
+          endpoint: "/api/public/integraciones/pedidos/orders/:orderId",
+          method: "GET",
+          headers: {
+            "x-api-key": "string",
+            "x-restaurante-slug": "string"
+          }
+        }
+      }
+    });
+  });
+
   app.post("/api/public/integraciones/pedidos/orders", { preHandler: authGuard.preHandler }, async (request, reply) => {
     const headers = externalOrderHeadersSchema.parse(request.headers);
     const body = createExternalOrderBodySchema.parse(request.body);
