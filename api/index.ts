@@ -7,6 +7,7 @@ let handlersRegistered = false;
 
 const initApp = async () => {
   const { repository, prisma } = createPrismaOrdersRepository();
+  await prisma.$connect();
   const app = buildApp(repository);
   await app.ready();
   return { app, prisma };

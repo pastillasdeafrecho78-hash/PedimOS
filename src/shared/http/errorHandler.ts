@@ -25,7 +25,8 @@ export const registerErrorHandler = (app: FastifyInstance): void => {
       });
     }
 
-    app.log.error({ err: error }, "Unhandled error in API");
+    // Keep raw error visible in Vercel runtime logs for diagnosis.
+    console.error("Unhandled error in API:", error);
     return reply.status(500).send({
       success: false,
       error: "Error interno no controlado",
