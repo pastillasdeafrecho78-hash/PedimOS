@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiClient, type Branch, type MenuCatalog } from "./api/client";
+import { apiClient, type AccountMe, type Branch, type MenuCatalog } from "./api/client";
 import { cartState, type CartItem } from "./state/cart";
 
 const randomExternalOrderId = (): string => `ext-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -40,6 +40,25 @@ export function App() {
   const [statusLog, setStatusLog] = useState<string[]>([]);
   const [statusTimeline, setStatusTimeline] = useState<Array<{ at: string; status: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [account, setAccount] = useState<AccountMe | null>(null);
+  const [accountOrders, setAccountOrders] = useState<
+    Array<{ orderId: string; numeroComanda: string; estado: string; total: number; createdAt: string }>
+  >([]);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState("");
+  const [accountRegisterMode, setAccountRegisterMode] = useState(false);
+  const [accountNameDraft, setAccountNameDraft] = useState("");
+  const [accountPhoneDraft, setAccountPhoneDraft] = useState("");
+  const [accountEmailDraft, setAccountEmailDraft] = useState("");
+  const [accountPasswordDraft, setAccountPasswordDraft] = useState("");
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountReservations, setAccountReservations] = useState<
+    Array<{ id: string; reservedFor: string; durationMinutes: number; status: string; partySize: number; notes?: string | null }>
+  >([]);
+  const [reservationDateDraft, setReservationDateDraft] = useState("");
+  const [reservationPartyDraft, setReservationPartyDraft] = useState("2");
+  const [reservationDurationDraft, setReservationDurationDraft] = useState("90");
+  const [reservationNotesDraft, setReservationNotesDraft] = useState("");
 
   useEffect(() => {
     const cfg = readIntegrationConfig();
@@ -80,6 +99,31 @@ export function App() {
         setCreatingSession(false);
         setLoadingMenu(false);
       });
+  }, [selectedBranchSlug]);
+
+  const refreshAccount = async () => {
+    setAccountLoading(true);
+    setAccountError("");
+    try {
+      const me = await apiClient.accountMe();
+      setAccount(me);
+      setAccountNameDraft(me.nombreCompleto);
+      setAccountPhoneDraft(me.telefono ?? "");
+      const orders = await apiClient.accountOrders();
+      setAccountOrders(orders);
+      const reservations = await apiClient.accountReservations();
+      setAccountReservations(reservations);
+    } catch {
+      setAccount(null);
+      setAccountOrders([]);
+      setAccountReservations([]);
+    } finally {
+      setAccountLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshAccount();
   }, [selectedBranchSlug]);
 
   const total = useMemo(() => cart.reduce((acc, item) => acc + item.qty * item.unitPrice, 0), [cart]);
@@ -191,6 +235,143 @@ export function App() {
     setStatusTimeline(timeline);
   };
 
+  const submitAccount = async () => {
+    if (!selectedBranchSlug) {
+      setAccountError("Selecciona sucursal antes de iniciar sesion.");
+      return;
+    }
+    if (!accountEmailDraft || !accountPasswordDraft) {
+      setAccountError("Ingresa correo y contrasena.");
+      return;
+    }
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      if (accountRegisterMode) {
+        await apiClient.accountRegister({
+          slug: selectedBranchSlug,
+          email: accountEmailDraft,
+          password: accountPasswordDraft,
+          nombreCompleto: accountNameDraft || "Cliente PedimOS",
+          telefono: accountPhoneDraft || undefined
+        });
+      } else {
+        await apiClient.accountLogin({
+          slug: selectedBranchSlug,
+          email: accountEmailDraft,
+          password: accountPasswordDraft
+        });
+      }
+      await refreshAccount();
+      setAccountPasswordDraft("");
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No fue posible autenticar.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const updateProfile = async () => {
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      await apiClient.accountUpdate({
+        nombreCompleto: accountNameDraft,
+        telefono: accountPhoneDraft
+      });
+      await refreshAccount();
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No se pudo guardar perfil.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const logoutAccount = async () => {
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      await apiClient.accountLogout();
+      setAccount(null);
+      setAccountOrders([]);
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No se pudo cerrar sesion.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const claimGuestOrders = async () => {
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      const linked = await apiClient.accountClaimGuest({
+        telefono: accountPhoneDraft || customerPhone || undefined,
+        orderIds: lastOrderId ? [lastOrderId] : undefined
+      });
+      await refreshAccount();
+      setStatusLog((prev) => [`Pedidos vinculados a tu cuenta: ${linked}`, ...prev]);
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No se pudieron vincular pedidos.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const loginWithMeta = async () => {
+    if (!selectedBranchSlug) {
+      setAccountError("Selecciona sucursal antes de usar Meta.");
+      return;
+    }
+    setAccountError("");
+    try {
+      const authUrl = await apiClient.metaStart(selectedBranchSlug);
+      if (!authUrl) {
+        setAccountError("Meta login no esta disponible en este entorno.");
+        return;
+      }
+      window.location.href = authUrl;
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No se pudo iniciar Meta login.");
+    }
+  };
+
+  const createReservation = async () => {
+    if (!reservationDateDraft) {
+      setAccountError("Selecciona fecha y hora para reservar.");
+      return;
+    }
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      await apiClient.createAccountReservation({
+        partySize: Number(reservationPartyDraft),
+        reservedFor: new Date(reservationDateDraft).toISOString(),
+        durationMinutes: Number(reservationDurationDraft),
+        notes: reservationNotesDraft || undefined
+      });
+      setReservationNotesDraft("");
+      await refreshAccount();
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No se pudo crear la reservacion.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const cancelReservation = async (id: string) => {
+    setAccountBusy(true);
+    setAccountError("");
+    try {
+      await apiClient.cancelAccountReservation(id);
+      await refreshAccount();
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "No se pudo cancelar reservacion.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
   return (
     <div className="app-shell">
       <div className="bg-orbs" />
@@ -290,11 +471,134 @@ export function App() {
           <section className="panel">
             <div className="panel-head">
               <h2>Cuenta</h2>
-              <span className="muted">Opcional después de pedir</span>
+              <span className="muted">{account ? "Sesion activa" : "Invitado"}</span>
             </div>
-            <p className="muted">
-              Puedes pedir como invitado y crear tu cuenta después del pago para guardar historial y favoritos.
-            </p>
+            {accountLoading ? <p className="muted">Cargando cuenta...</p> : null}
+            {accountError ? <p className="muted">{accountError}</p> : null}
+
+            {!account ? (
+              <div className="space-y-3">
+                <p className="muted">Inicia sesion para guardar tu historial y reservar mesa.</p>
+                <input
+                  value={accountNameDraft}
+                  onChange={(event) => setAccountNameDraft(event.target.value)}
+                  placeholder="Nombre completo"
+                />
+                <input
+                  value={accountPhoneDraft}
+                  onChange={(event) => setAccountPhoneDraft(event.target.value)}
+                  placeholder="Telefono"
+                />
+                <input
+                  value={accountEmailDraft}
+                  onChange={(event) => setAccountEmailDraft(event.target.value)}
+                  placeholder="Correo"
+                />
+                <input
+                  type="password"
+                  value={accountPasswordDraft}
+                  onChange={(event) => setAccountPasswordDraft(event.target.value)}
+                  placeholder="Contrasena"
+                />
+                <div className="actions">
+                  <button className="secondary" onClick={() => setAccountRegisterMode((prev) => !prev)}>
+                    {accountRegisterMode ? "Tengo cuenta" : "Crear cuenta"}
+                  </button>
+                  <button className="primary" disabled={accountBusy} onClick={submitAccount}>
+                    {accountBusy ? "Procesando..." : accountRegisterMode ? "Registrarme" : "Entrar"}
+                  </button>
+                  <button className="secondary" onClick={loginWithMeta}>
+                    Entrar con Meta
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="muted">
+                  {account.nombreCompleto} ({account.email}) - {account.isCommissionFree ? "Sin comision" : "Cliente estandar"}
+                </p>
+                <input
+                  value={accountNameDraft}
+                  onChange={(event) => setAccountNameDraft(event.target.value)}
+                  placeholder="Nombre completo"
+                />
+                <input
+                  value={accountPhoneDraft}
+                  onChange={(event) => setAccountPhoneDraft(event.target.value)}
+                  placeholder="Telefono"
+                />
+                <div className="actions">
+                  <button className="secondary" disabled={accountBusy} onClick={updateProfile}>
+                    Guardar perfil
+                  </button>
+                  <button className="secondary" disabled={accountBusy} onClick={claimGuestOrders}>
+                    Vincular pedidos invitado
+                  </button>
+                  <button className="primary" disabled={accountBusy} onClick={logoutAccount}>
+                    Cerrar sesion
+                  </button>
+                </div>
+                <div className="timeline">
+                  {accountOrders.map((row) => (
+                    <div key={row.orderId} className="timeline-row">
+                      <span>{new Date(row.createdAt).toLocaleString("es-MX")}</span>
+                      <strong>
+                        #{row.numeroComanda} - {row.estado} - {asCurrency(row.total)}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+                <h3>Tus reservaciones</h3>
+                <div className="actions">
+                  <input
+                    type="datetime-local"
+                    value={reservationDateDraft}
+                    onChange={(event) => setReservationDateDraft(event.target.value)}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={reservationPartyDraft}
+                    onChange={(event) => setReservationPartyDraft(event.target.value)}
+                    placeholder="Personas"
+                  />
+                  <input
+                    type="number"
+                    min={30}
+                    max={360}
+                    value={reservationDurationDraft}
+                    onChange={(event) => setReservationDurationDraft(event.target.value)}
+                    placeholder="Minutos"
+                  />
+                </div>
+                <input
+                  value={reservationNotesDraft}
+                  onChange={(event) => setReservationNotesDraft(event.target.value)}
+                  placeholder="Notas para la reservacion"
+                />
+                <button className="secondary" disabled={accountBusy} onClick={createReservation}>
+                  Reservar mesa
+                </button>
+                <div className="timeline">
+                  {accountReservations.map((reservation) => (
+                    <div key={reservation.id} className="timeline-row">
+                      <span>
+                        {new Date(reservation.reservedFor).toLocaleString("es-MX")} · {reservation.partySize} personas
+                      </span>
+                      <strong>
+                        {reservation.status}
+                        {reservation.status !== "CANCELADA" && reservation.status !== "COMPLETADA" ? (
+                          <button className="secondary" onClick={() => cancelReservation(reservation.id)}>
+                            Cancelar
+                          </button>
+                        ) : null}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         ) : null}
 

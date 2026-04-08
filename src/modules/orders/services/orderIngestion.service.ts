@@ -9,6 +9,7 @@ type IngestionInput = {
   restauranteId: string;
   apiKeyId: string | undefined;
   authMode: "api_key" | "public_session";
+  createdByUserId: string | undefined;
   idempotencyKey: string;
   payload: CreateExternalOrderBody;
   ttlHours: number;
@@ -54,7 +55,11 @@ export class OrderIngestionService {
 
     let created;
     try {
-      created = await this.repository.createOrder({ restaurante, payload: input.payload });
+      created = await this.repository.createOrder({
+        restaurante,
+        payload: input.payload,
+        createdByUserId: input.createdByUserId
+      });
     } catch {
       throw canonicalError("duplicate_external_order", "externalOrderId ya existe para la sucursal");
     }

@@ -253,15 +253,29 @@ export class PrismaOrdersRepository implements OrdersRepository {
 
   async createOrder(params: CreateOrderParams): Promise<CreatedOrderRecord> {
     return this.prisma.$transaction(async (tx) => {
-      const userRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        select "id"
-        from "Usuario"
-        where "restauranteId" = ${params.restaurante.id}
-          and "activo" = true
-        order by "createdAt" asc
-        limit 1
-      `);
-      const createdById = userRows[0]?.id;
+      let createdById = params.createdByUserId;
+      if (createdById) {
+        const scoped = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          select "id"
+          from "Usuario"
+          where "id" = ${createdById}
+            and "restauranteId" = ${params.restaurante.id}
+            and "activo" = true
+          limit 1
+        `);
+        createdById = scoped[0]?.id;
+      }
+      if (!createdById) {
+        const userRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          select "id"
+          from "Usuario"
+          where "restauranteId" = ${params.restaurante.id}
+            and "activo" = true
+          order by "createdAt" asc
+          limit 1
+        `);
+        createdById = userRows[0]?.id;
+      }
       if (!createdById) {
         throw new Error("No hay usuario activo para crear comandas en esta sucursal");
       }

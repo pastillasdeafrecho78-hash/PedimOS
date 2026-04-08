@@ -69,6 +69,7 @@ export type CreatedOrderRecord = {
 export type CreateOrderParams = {
   restaurante: RestauranteRecord;
   payload: CreateExternalOrderBody;
+  createdByUserId: string | undefined;
 };
 
 export interface OrdersRepository {

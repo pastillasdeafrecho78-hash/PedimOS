@@ -12,6 +12,7 @@ import {
   sendWebAsset,
   sendWebIndex
 } from "../../ui/webArtifact.server.js";
+import { readAccountSession } from "../../account/accountSecurity.js";
 
 export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: OrdersRepository): void => {
   const authGuard = new IntegrationAuthGuard(repository);
@@ -198,6 +199,12 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
       restauranteId: context.restauranteId,
       apiKeyId: context.apiKeyId,
       authMode: context.authMode,
+      createdByUserId: (() => {
+        const account = readAccountSession(request);
+        if (!account) return undefined;
+        if (account.restauranteId !== context.restauranteId) return undefined;
+        return account.userId;
+      })(),
       idempotencyKey,
       payload: body,
       ttlHours: env.IDEMPOTENCY_TTL_HOURS
