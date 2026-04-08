@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IntegrationScope {
+  orders_create
+  orders_read
+}
+
+enum OrderChannel {
+  EXTERNAL_API
+  STAFF_DASHBOARD
+  PUBLIC_LINK
+}
+
+enum OrderStatus {
+  PENDIENTE
+  EN_PREPARACION
+  LISTO
+  SERVIDO
+  PAGADO
+  CANCELADO
+}
+
+model Restaurante {
+  id            String      @id @default(cuid())
+  slug          String      @unique
+  nombre        String
+  isActive      Boolean     @default(true)
+  isSuspended   Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  apiKeys       IntegracionApiKey[]
+  productos     Producto[]
+  tamanos       Tamano[]
+  modificadores Modificador[]
+  orders        Order[]
+}
+
+model IntegracionApiKey {
+  id               String             @id @default(cuid())
+  restauranteId    String
+  keyHash          String             @unique
+  isActive         Boolean            @default(true)
+  scopes           IntegrationScope[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  restaurante      Restaurante        @relation(fields: [restauranteId], references: [id], onDelete: Cascade)
+  idempotencyKeys  ExternalIdempotencyKey[]
+  @@index([restauranteId])
+}
+
+model Producto {
+  id            String      @id @default(cuid())
+  restauranteId String
+  nombre        String
+  isActive      Boolean     @default(true)
+  restaurante   Restaurante @relation(fields: [restauranteId], references: [id], onDelete: Cascade)
+  items         OrderItem[]
+  @@index([restauranteId])
+}
+
+model Tamano {
+  id            String      @id @default(cuid())
+  restauranteId String
+  nombre        String
+  isActive      Boolean     @default(true)
+  restaurante   Restaurante @relation(fields: [restauranteId], references: [id], onDelete: Cascade)
+  items         OrderItem[]
+  @@index([restauranteId])
+}
+
+model Modificador {
+  id            String      @id @default(cuid())
+  restauranteId String
+  nombre        String
+  isActive      Boolean     @default(true)
+  restaurante   Restaurante @relation(fields: [restauranteId], references: [id], onDelete: Cascade)
+  @@index([restauranteId])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  restauranteId   String
+  externalOrderId String
+  tipoPedido      String
+  canal           String
+  origen          OrderChannel
+  numeroComanda   Int
+  estado          OrderStatus @default(PENDIENTE)
+  notas           String?
+  deliveryMode    String?
+  driverRef       String?
+  vehicleNote     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  restaurante     Restaurante @relation(fields: [restauranteId], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+
+  @@unique([restauranteId, externalOrderId])
+  @@index([restauranteId])
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  productoId String
+  tamanoId   String?
+  cantidad   Int
+  notas      String?
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  producto   Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  tamano     Tamano?  @relation(fields: [tamanoId], references: [id], onDelete: Restrict)
+}
+
+model ExternalIdempotencyKey {
+  id                String            @id @default(cuid())
+  idempotencyKey    String
+  restauranteId     String
+  apiKeyId          String
+  payloadHash       String
+  status            String
+  responseSnapshot  Json?
+  createdAt         DateTime          @default(now())
+  expiresAt         DateTime
+  apiKey            IntegracionApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+
+  @@unique([idempotencyKey, restauranteId])
+  @@index([restauranteId])
+}
