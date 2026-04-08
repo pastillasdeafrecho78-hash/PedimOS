@@ -6,6 +6,8 @@ import type {
   CreatedOrderRecord,
   IdempotencyRecord,
   OrdersRepository,
+  PublicCatalogRecord,
+  PublicRestauranteRecord,
   ProductScopeRecord,
   RestauranteRecord
 } from "./orders.repository.js";
@@ -38,6 +40,39 @@ export class InMemoryOrdersRepository implements OrdersRepository {
     this.productos = seed?.productos ?? [];
     this.tamanos = seed?.tamanos ?? [];
     this.modificadores = seed?.modificadores ?? [];
+  }
+
+  async listActiveRestaurantes(): Promise<PublicRestauranteRecord[]> {
+    return this.restaurantes
+      .filter((restaurante) => restaurante.isActive && !restaurante.isSuspended)
+      .map((restaurante) => ({
+        id: restaurante.id,
+        slug: restaurante.slug,
+        nombre: restaurante.nombre
+      }));
+  }
+
+  async getPublicCatalogByRestauranteSlug(slug: string): Promise<PublicCatalogRecord | null> {
+    const restaurante = await this.findRestauranteBySlug(slug);
+    if (!restaurante || !restaurante.isActive || restaurante.isSuspended) {
+      return null;
+    }
+    return {
+      restaurante: {
+        id: restaurante.id,
+        slug: restaurante.slug,
+        nombre: restaurante.nombre
+      },
+      productos: this.productos
+        .filter((item) => item.restauranteId === restaurante.id && item.isActive)
+        .map((item) => ({ id: item.id, nombre: item.id })),
+      tamanos: this.tamanos
+        .filter((item) => item.restauranteId === restaurante.id && item.isActive)
+        .map((item) => ({ id: item.id, nombre: item.id })),
+      modificadores: this.modificadores
+        .filter((item) => item.restauranteId === restaurante.id && item.isActive)
+        .map((item) => ({ id: item.id, nombre: item.id }))
+    };
   }
 
   async findRestauranteBySlug(slug: string): Promise<RestauranteRecord | null> {

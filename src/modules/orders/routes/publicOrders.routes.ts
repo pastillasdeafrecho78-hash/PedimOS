@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { env } from "../../../config/env.js";
+import { canonicalError } from "../../../shared/errors/canonicalErrors.js";
 import { IntegrationAuthGuard } from "../../auth/integrationAuth.js";
 import {
   createExternalOrderBodySchema,
@@ -44,6 +45,26 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
     return reply.status(200).send({
       success: true,
       data: { status: "ok" }
+    });
+  });
+
+  app.get("/api/public/integraciones/pedidos/restaurantes", async (_request, reply) => {
+    const restaurantes = await repository.listActiveRestaurantes();
+    return reply.status(200).send({
+      success: true,
+      data: restaurantes
+    });
+  });
+
+  app.get("/api/public/integraciones/pedidos/menu/:slug", async (request, reply) => {
+    const { slug } = z.object({ slug: z.string().min(1) }).parse(request.params);
+    const catalog = await repository.getPublicCatalogByRestauranteSlug(slug);
+    if (!catalog) {
+      throw canonicalError("branch_not_found", "Sucursal no encontrada o inactiva");
+    }
+    return reply.status(200).send({
+      success: true,
+      data: catalog
     });
   });
 

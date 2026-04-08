@@ -211,7 +211,9 @@ export const renderLoginPage = (): string =>
           <label for="apiKey">API key</label>
           <input id="apiKey" name="apiKey" placeholder="Ingresa x-api-key" required />
           <label for="slug">Restaurante slug</label>
-          <input id="slug" name="slug" placeholder="sucursal-centro" required />
+          <select id="slug" name="slug" required>
+            <option value="">Cargando sucursales...</option>
+          </select>
           <label for="defaultOrderId">Default order id check</label>
           <input id="defaultOrderId" name="defaultOrderId" placeholder="health-check-order" />
           <div class="row" style="margin-top:12px">
@@ -231,7 +233,21 @@ export const renderLoginPage = (): string =>
       const form = document.getElementById("integration-login");
       const statusEl = document.getElementById("login-status");
       const existing = JSON.parse(localStorage.getItem(KEY) || "{}");
-      for (const id of ["apiKey", "slug", "defaultOrderId"]) {
+      const loadRestaurants = async () => {
+        const res = await fetch("/api/public/integraciones/pedidos/restaurantes");
+        const json = await res.json().catch(() => ({ data: [] }));
+        const rows = Array.isArray(json.data) ? json.data : [];
+        const select = document.getElementById("slug");
+        if (!rows.length) {
+          select.innerHTML = '<option value="">No hay sucursales activas</option>';
+          return;
+        }
+        select.innerHTML = ['<option value="">Selecciona sucursal</option>']
+          .concat(rows.map((r) => '<option value="' + r.slug + '">' + r.nombre + ' (' + r.slug + ')</option>'))
+          .join("");
+        if (existing.slug) select.value = existing.slug;
+      };
+      for (const id of ["apiKey", "defaultOrderId"]) {
         const el = document.getElementById(id);
         if (el && existing[id]) el.value = existing[id];
       }
@@ -249,6 +265,7 @@ export const renderLoginPage = (): string =>
         localStorage.setItem(KEY, JSON.stringify(payload));
         statusEl.innerHTML = '<span class="ok">Credenciales guardadas. Continunua en Integration status.</span>';
       });
+      void loadRestaurants();
     `
   });
 
@@ -269,7 +286,9 @@ export const renderRegisterPage = (): string =>
           <label for="apiKeyR">API key</label>
           <input id="apiKeyR" name="apiKeyR" placeholder="x-api-key" required />
           <label for="slugR">Restaurante slug</label>
-          <input id="slugR" name="slugR" placeholder="sucursal-centro" required />
+          <select id="slugR" name="slugR" required>
+            <option value="">Cargando sucursales...</option>
+          </select>
           <div class="row" style="margin-top:12px">
             <button class="btn btn-primary" type="submit">Registrar entorno</button>
             <a class="btn btn-secondary" href="/orders/new">Capturar pedido</a>
@@ -285,6 +304,19 @@ export const renderRegisterPage = (): string =>
       const KEY = "recivimos.integration.v1";
       const form = document.getElementById("integration-register");
       const statusEl = document.getElementById("register-status");
+      const loadRestaurants = async () => {
+        const res = await fetch("/api/public/integraciones/pedidos/restaurantes");
+        const json = await res.json().catch(() => ({ data: [] }));
+        const rows = Array.isArray(json.data) ? json.data : [];
+        const select = document.getElementById("slugR");
+        if (!rows.length) {
+          select.innerHTML = '<option value="">No hay sucursales activas</option>';
+          return;
+        }
+        select.innerHTML = ['<option value="">Selecciona sucursal</option>']
+          .concat(rows.map((r) => '<option value="' + r.slug + '">' + r.nombre + ' (' + r.slug + ')</option>'))
+          .join("");
+      };
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const payload = {
@@ -301,6 +333,7 @@ export const renderRegisterPage = (): string =>
         localStorage.setItem(KEY, JSON.stringify(payload));
         statusEl.textContent = JSON.stringify({ success: true, data: payload }, null, 2);
       });
+      void loadRestaurants();
     `
   });
 
@@ -376,8 +409,12 @@ export const renderCreateOrderPage = (): string =>
         <section class="panel">
           <label for="apiKey">API key</label>
           <input id="apiKey" placeholder="x-api-key" required />
-          <label for="slug">Restaurante slug</label>
-          <input id="slug" placeholder="sucursal-centro" required />
+          <label for="slug">Restaurante (sucursal)</label>
+          <select id="slug" required>
+            <option value="">Cargando sucursales...</option>
+          </select>
+          <label for="catalogStatus">Estado del menu</label>
+          <input id="catalogStatus" value="Selecciona sucursal para cargar menu" readonly />
           <label for="externalOrderId">External order id (idempotency)</label>
           <input id="externalOrderId" placeholder="ext-1001" required />
           <label for="tipoPedido">Tipo pedido</label>
@@ -386,12 +423,16 @@ export const renderCreateOrderPage = (): string =>
             <option value="DOMICILIO">DOMICILIO</option>
             <option value="DELIVERY">DELIVERY</option>
           </select>
-          <label for="productoId">Producto id</label>
-          <input id="productoId" placeholder="prod-a-1" required />
+          <label for="productoId">Producto</label>
+          <select id="productoId" required>
+            <option value="">Selecciona una sucursal</option>
+          </select>
           <label for="cantidad">Cantidad</label>
           <input id="cantidad" type="number" min="1" value="1" required />
-          <label for="tamanoId">Tamano id (optional)</label>
-          <input id="tamanoId" placeholder="tam-a-1" />
+          <label for="tamanoId">Tamano (optional)</label>
+          <select id="tamanoId">
+            <option value="">Sin tamano</option>
+          </select>
           <label for="itemNotas">Notas item (optional)</label>
           <input id="itemNotas" placeholder="sin cebolla" />
           <label for="clienteNombre">Cliente nombre (optional)</label>
@@ -420,10 +461,44 @@ export const renderCreateOrderPage = (): string =>
 
       const byId = (id) => document.getElementById(id);
       const readConfig = () => JSON.parse(localStorage.getItem(KEY) || "{}");
+      const setOptions = (selectId, options, placeholder) => {
+        const select = byId(selectId);
+        const html = ['<option value="">' + placeholder + '</option>']
+          .concat(options.map((item) => '<option value="' + item.id + '">' + item.nombre + '</option>'))
+          .join("");
+        select.innerHTML = html;
+      };
+      const loadRestaurants = async () => {
+        const res = await fetch("/api/public/integraciones/pedidos/restaurantes");
+        const json = await res.json().catch(() => ({ data: [] }));
+        const rows = Array.isArray(json.data) ? json.data : [];
+        const select = byId("slug");
+        if (!rows.length) {
+          select.innerHTML = '<option value="">No hay sucursales activas</option>';
+          return;
+        }
+        select.innerHTML = ['<option value="">Selecciona sucursal</option>']
+          .concat(rows.map((r) => '<option value="' + r.slug + '">' + r.nombre + ' (' + r.slug + ')</option>'))
+          .join("");
+      };
+      const loadCatalog = async (slug) => {
+        if (!slug) return;
+        byId("catalogStatus").value = "Cargando menu...";
+        const res = await fetch("/api/public/integraciones/pedidos/menu/" + encodeURIComponent(slug));
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.data) {
+          byId("catalogStatus").value = "No se pudo cargar menu";
+          setOptions("productoId", [], "Sin productos");
+          setOptions("tamanoId", [], "Sin tamano");
+          return;
+        }
+        setOptions("productoId", json.data.productos || [], "Selecciona producto");
+        setOptions("tamanoId", json.data.tamanos || [], "Sin tamano");
+        byId("catalogStatus").value = "Menu de " + json.data.restaurante.nombre + " cargado";
+      };
       const setFromConfig = () => {
         const cfg = readConfig();
         if (cfg.apiKey) byId("apiKey").value = cfg.apiKey;
-        if (cfg.slug) byId("slug").value = cfg.slug;
       };
       const headers = () => ({
         "content-type": "application/json",
@@ -505,6 +580,17 @@ export const renderCreateOrderPage = (): string =>
         print({ orderId, polling: lines });
       });
 
-      setFromConfig();
+      byId("slug").addEventListener("change", async (e) => {
+        const slug = e.target.value.trim();
+        await loadCatalog(slug);
+      });
+      void loadRestaurants().then(async () => {
+        setFromConfig();
+        const cfg = readConfig();
+        if (cfg.slug) {
+          byId("slug").value = cfg.slug;
+          await loadCatalog(cfg.slug);
+        }
+      });
     `
   });

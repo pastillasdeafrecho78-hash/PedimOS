@@ -32,6 +32,19 @@ export type ProductScopeRecord = {
   isActive: boolean;
 };
 
+export type PublicRestauranteRecord = {
+  id: string;
+  slug: string;
+  nombre: string;
+};
+
+export type PublicCatalogRecord = {
+  restaurante: PublicRestauranteRecord;
+  productos: Array<{ id: string; nombre: string }>;
+  tamanos: Array<{ id: string; nombre: string }>;
+  modificadores: Array<{ id: string; nombre: string }>;
+};
+
 export type IdempotencyRecord = {
   id: string;
   idempotencyKey: string;
@@ -59,6 +72,8 @@ export type CreateOrderParams = {
 };
 
 export interface OrdersRepository {
+  listActiveRestaurantes(): Promise<PublicRestauranteRecord[]>;
+  getPublicCatalogByRestauranteSlug(slug: string): Promise<PublicCatalogRecord | null>;
   findRestauranteBySlug(slug: string): Promise<RestauranteRecord | null>;
   findApiKeyByHash(hash: string): Promise<ApiKeyRecord | null>;
   findProductsByIds(productIds: string[]): Promise<ProductScopeRecord[]>;

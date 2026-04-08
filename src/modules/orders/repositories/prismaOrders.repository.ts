@@ -5,6 +5,8 @@ import type {
   CreatedOrderRecord,
   IdempotencyRecord,
   OrdersRepository,
+  PublicCatalogRecord,
+  PublicRestauranteRecord,
   ProductScopeRecord,
   RestauranteRecord
 } from "./orders.repository.js";
@@ -64,6 +66,50 @@ const mapIdempotency = (row: {
 
 export class PrismaOrdersRepository implements OrdersRepository {
   constructor(private readonly prisma: PrismaClient) {}
+
+  async listActiveRestaurantes(): Promise<PublicRestauranteRecord[]> {
+    const rows = await this.prisma.restaurante.findMany({
+      where: { isActive: true, isSuspended: false },
+      orderBy: { nombre: "asc" },
+      select: { id: true, slug: true, nombre: true }
+    });
+    return rows;
+  }
+
+  async getPublicCatalogByRestauranteSlug(slug: string): Promise<PublicCatalogRecord | null> {
+    const restaurante = await this.prisma.restaurante.findUnique({
+      where: { slug },
+      select: { id: true, slug: true, nombre: true, isActive: true, isSuspended: true }
+    });
+    if (!restaurante || !restaurante.isActive || restaurante.isSuspended) {
+      return null;
+    }
+
+    const [productos, tamanos, modificadores] = await Promise.all([
+      this.prisma.producto.findMany({
+        where: { restauranteId: restaurante.id, isActive: true },
+        orderBy: { nombre: "asc" },
+        select: { id: true, nombre: true }
+      }),
+      this.prisma.tamano.findMany({
+        where: { restauranteId: restaurante.id, isActive: true },
+        orderBy: { nombre: "asc" },
+        select: { id: true, nombre: true }
+      }),
+      this.prisma.modificador.findMany({
+        where: { restauranteId: restaurante.id, isActive: true },
+        orderBy: { nombre: "asc" },
+        select: { id: true, nombre: true }
+      })
+    ]);
+
+    return {
+      restaurante: { id: restaurante.id, slug: restaurante.slug, nombre: restaurante.nombre },
+      productos,
+      tamanos,
+      modificadores
+    };
+  }
 
   async findRestauranteBySlug(slug: string): Promise<RestauranteRecord | null> {
     const row = await this.prisma.restaurante.findUnique({
