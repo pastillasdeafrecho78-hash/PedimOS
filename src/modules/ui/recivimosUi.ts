@@ -427,12 +427,16 @@ export const renderCreateOrderPage = (): string =>
           <select id="productoId" required>
             <option value="">Selecciona una sucursal</option>
           </select>
+          <label for="productoIdManual">Producto id manual (fallback)</label>
+          <input id="productoIdManual" placeholder="prod-a-1" />
           <label for="cantidad">Cantidad</label>
           <input id="cantidad" type="number" min="1" value="1" required />
           <label for="tamanoId">Tamano (optional)</label>
           <select id="tamanoId">
             <option value="">Sin tamano</option>
           </select>
+          <label for="tamanoIdManual">Tamano id manual (fallback)</label>
+          <input id="tamanoIdManual" placeholder="size-a-1" />
           <label for="itemNotas">Notas item (optional)</label>
           <input id="itemNotas" placeholder="sin cebolla" />
           <label for="clienteNombre">Cliente nombre (optional)</label>
@@ -495,6 +499,9 @@ export const renderCreateOrderPage = (): string =>
         setOptions("productoId", json.data.productos || [], "Selecciona producto");
         setOptions("tamanoId", json.data.tamanos || [], "Sin tamano");
         byId("catalogStatus").value = "Menu de " + json.data.restaurante.nombre + " cargado";
+        if (json.degraded) {
+          byId("catalogStatus").value += " (modo fallback manual)";
+        }
       };
       const setFromConfig = () => {
         const cfg = readConfig();
@@ -507,19 +514,23 @@ export const renderCreateOrderPage = (): string =>
         "x-idempotency-key": byId("externalOrderId").value.trim()
       });
       const buildPayload = () => {
+        const productoId = byId("productoId").value.trim() || byId("productoIdManual").value.trim();
         const payload = {
           externalOrderId: byId("externalOrderId").value.trim(),
           tipoPedido: byId("tipoPedido").value,
           canal: "EXTERNAL_APP",
           items: [
             {
-              productoId: byId("productoId").value.trim(),
+              productoId,
               cantidad: Number(byId("cantidad").value || 1),
               modificadores: []
             }
           ]
         };
-        const tamanoId = byId("tamanoId").value.trim();
+        if (!productoId) {
+          throw new Error("Selecciona producto o captura producto id manual.");
+        }
+        const tamanoId = byId("tamanoId").value.trim() || byId("tamanoIdManual").value.trim();
         const notas = byId("itemNotas").value.trim();
         if (tamanoId) payload.items[0].tamanoId = tamanoId;
         if (notas) payload.items[0].notas = notas;
@@ -535,7 +546,13 @@ export const renderCreateOrderPage = (): string =>
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const payload = buildPayload();
+        let payload;
+        try {
+          payload = buildPayload();
+        } catch (error) {
+          print({ error: error instanceof Error ? error.message : "Payload invalido" });
+          return;
+        }
         const response = await fetch("/api/public/integraciones/pedidos/orders", {
           method: "POST",
           headers: headers(),

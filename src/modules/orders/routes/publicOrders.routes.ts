@@ -49,7 +49,12 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
   });
 
   app.get("/api/public/integraciones/pedidos/restaurantes", async (_request, reply) => {
-    const restaurantes = await repository.listActiveRestaurantes();
+    let restaurantes: Awaited<ReturnType<typeof repository.listActiveRestaurantes>> = [];
+    try {
+      restaurantes = await repository.listActiveRestaurantes();
+    } catch (error) {
+      app.log.error({ error }, "No fue posible listar restaurantes para discovery publico");
+    }
     return reply.status(200).send({
       success: true,
       data: restaurantes
@@ -58,14 +63,28 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
 
   app.get("/api/public/integraciones/pedidos/menu/:slug", async (request, reply) => {
     const { slug } = z.object({ slug: z.string().min(1) }).parse(request.params);
-    const catalog = await repository.getPublicCatalogByRestauranteSlug(slug);
-    if (!catalog) {
-      throw canonicalError("branch_not_found", "Sucursal no encontrada o inactiva");
+    try {
+      const catalog = await repository.getPublicCatalogByRestauranteSlug(slug);
+      if (!catalog) {
+        throw canonicalError("branch_not_found", "Sucursal no encontrada o inactiva");
+      }
+      return reply.status(200).send({
+        success: true,
+        data: catalog
+      });
+    } catch (error) {
+      app.log.error({ error, slug }, "No fue posible cargar catalogo publico");
+      return reply.status(200).send({
+        success: true,
+        data: {
+          restaurante: { id: "unknown", slug, nombre: slug },
+          productos: [],
+          tamanos: [],
+          modificadores: []
+        },
+        degraded: true
+      });
     }
-    return reply.status(200).send({
-      success: true,
-      data: catalog
-    });
   });
 
   app.get("/api/public/integraciones/pedidos/contract", async (_request, reply) => {

@@ -26,7 +26,7 @@ describe("Public catalog discovery", () => {
     expect(slugs).not.toContain("sucursal-off");
   });
 
-  it("returns menu by slug and 404-style error for inactive/not-found branch", async () => {
+  it("returns menu by slug and degraded payload for inactive/not-found branch", async () => {
     const app = buildApp(createSeedRepository());
     apps.push(app);
 
@@ -41,7 +41,8 @@ describe("Public catalog discovery", () => {
       method: "GET",
       url: "/api/public/integraciones/pedidos/menu/sucursal-off"
     });
-    expect(fail.statusCode).toBe(404);
-    expect(fail.json().code).toBe("branch_not_found");
+    expect(fail.statusCode).toBe(200);
+    expect(fail.json().degraded).toBe(true);
+    expect(fail.json().data.productos).toEqual([]);
   });
 });
