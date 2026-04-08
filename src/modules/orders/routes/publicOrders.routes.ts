@@ -74,7 +74,17 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
         slug: z.string().min(1),
       })
       .parse(request.body ?? {});
-    const restaurante = await repository.findRestauranteBySlug(body.slug);
+    let restaurante: Awaited<ReturnType<typeof repository.findRestauranteBySlug>> = null;
+    try {
+      restaurante = await repository.findRestauranteBySlug(body.slug);
+    } catch (error) {
+      app.log.error({ error, slug: body.slug }, "No fue posible iniciar sesion publica");
+      return reply.status(200).send({
+        success: false,
+        code: "session_unavailable",
+        error: "No se pudo iniciar la sesion de invitado para esta sucursal en este entorno"
+      });
+    }
     if (!restaurante || !restaurante.isActive || restaurante.isSuspended) {
       throw canonicalError("branch_not_found", "Sucursal no encontrada o inactiva");
     }
