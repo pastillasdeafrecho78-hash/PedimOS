@@ -25,6 +25,7 @@ export const registerErrorHandler = (app: FastifyInstance): void => {
       });
     }
 
+    app.log.error({ err: error }, "Unhandled error in API");
     return reply.status(500).send({
       success: false,
       error: "Error interno no controlado",
