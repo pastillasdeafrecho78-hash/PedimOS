@@ -22,6 +22,8 @@ export function App() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranchSlug, setSelectedBranchSlug] = useState("");
   const [menu, setMenu] = useState<MenuCatalog | null>(null);
+  const [query, setQuery] = useState("");
+  const [activeProductId, setActiveProductId] = useState("");
   const [menuError, setMenuError] = useState("");
   const [loadingMenu, setLoadingMenu] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -42,7 +44,12 @@ export function App() {
     setCart(cartState.read());
     void apiClient
       .getBranches()
-      .then(setBranches)
+      .then((loaded) => {
+        setBranches(loaded);
+        if (!cfg.slug && loaded.length) {
+          setSelectedBranchSlug(loaded[0]?.slug ?? "");
+        }
+      })
       .catch(() => setBranches([]));
   }, []);
 
@@ -66,6 +73,19 @@ export function App() {
   }, [selectedBranchSlug]);
 
   const total = useMemo(() => cart.reduce((acc, item) => acc + item.qty * item.unitPrice, 0), [cart]);
+  const filteredBranches = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return branches;
+    return branches.filter((branch) => branch.nombre.toLowerCase().includes(term) || branch.slug.toLowerCase().includes(term));
+  }, [branches, query]);
+  const visibleProducts = useMemo(() => {
+    const products = menu?.productos ?? [];
+    const term = query.trim().toLowerCase();
+    if (!term) return products;
+    return products.filter((product) => product.nombre.toLowerCase().includes(term));
+  }, [menu?.productos, query]);
+  const selectedProduct =
+    visibleProducts.find((product) => product.id === activeProductId) ?? visibleProducts[0] ?? null;
 
   const addProduct = (productId: string, productName: string) => {
     const next = cartState.add({
@@ -171,104 +191,157 @@ export function App() {
   return (
     <div className="app-shell">
       <div className="bg-orbs" />
-      <div className="layout">
-        <main className="content">
-          <section className="hero-card">
-            <div className="hero-top">
-              <div>
-                <div className="badge">PedimOS</div>
-                <h1>{menu?.restaurante?.nombre ?? "Canal cliente PedimOS"}</h1>
-                <p>Pide rapido, sin friccion y con envio estructurado directo al flujo operativo del restaurante.</p>
-              </div>
+      <div className="layout-wide">
+        <header className="hero-card">
+          <div className="hero-row">
+            <div>
+              <div className="badge">PedimOS</div>
+              <h1>{menu?.restaurante?.nombre ?? "Pide lo que se te antoje"}</h1>
+              <p>Canal cliente conectado al flujo operativo: sucursal, menu, carrito, pedido y seguimiento.</p>
             </div>
-            <div className="chips">
-              <div className="chip">
-                Sucursal:
-                <select value={selectedBranchSlug} onChange={(event) => setSelectedBranchSlug(event.target.value)}>
-                  <option value="">Selecciona</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.slug}>
-                      {branch.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="hero-controls">
+              <div className="chip">Sucursales activas: {branches.length}</div>
               <div className="chip">Productos: {menu?.productos.length ?? 0}</div>
-              <div className="chip alert">{menuError ? menuError : "Pedido en linea activo"}</div>
+              <div className="chip alert">{menuError ? menuError : "Operacion en linea"}</div>
             </div>
-          </section>
+          </div>
+        </header>
 
-          <section className="menu-card">
-            <h2>Arma tu orden</h2>
-            {loadingMenu ? <p>Cargando menu...</p> : null}
-            <div className="products-grid">
-              {(menu?.productos ?? []).map((product) => (
-                <article key={product.id} className="product-card">
-                  <div className="product-head">
-                    <span className="icon">🍽️</span>
-                    <span className="tag">Disponible</span>
+        <section className="three-col">
+          <aside className="panel">
+            <div className="panel-head">
+              <h2>Cerca de ti</h2>
+              <span className="muted">Mapa</span>
+            </div>
+            <div className="map-box">Mapa de sucursales</div>
+            <p className="muted">El tiempo/estado real puede reflejarse por sucursal en el ecosistema ServimOS + PedimOS.</p>
+          </aside>
+
+          <main className="panel">
+            <div className="panel-head">
+              <h2>Explorar</h2>
+              <input
+                className="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar sucursal o producto..."
+              />
+            </div>
+            <div className="list">
+              {filteredBranches.map((branch) => (
+                <article key={branch.id} className={`branch-card ${selectedBranchSlug === branch.slug ? "active" : ""}`}>
+                  <div>
+                    <h3>{branch.nombre}</h3>
+                    <p>{branch.slug}</p>
                   </div>
-                  <h3>{product.nombre}</h3>
-                  <p>ID {product.id}</p>
-                  <div className="product-actions">
-                    <span>{asCurrency(38)}</span>
-                    <button onClick={() => addProduct(product.id, product.nombre)}>Agregar</button>
-                  </div>
+                  <button onClick={() => setSelectedBranchSlug(branch.slug)}>Ver menu</button>
                 </article>
               ))}
-              {!menu?.productos?.length ? <div className="empty-card">No hay menu cargado para esta sucursal.</div> : null}
             </div>
-          </section>
-        </main>
+          </main>
 
-        <aside className="sidebar">
-          <section className="cart-card">
-            <h3>Tu carrito</h3>
-            <p className="muted">Este pedido quedara ligado a la sucursal seleccionada.</p>
-            <label>API key</label>
-            <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="x-api-key" />
-            <label>Idempotency key</label>
-            <input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} />
-            <label>Nombre cliente</label>
-            <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
-            <label>Telefono</label>
-            <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} />
-            <label>Direccion</label>
-            <input value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
-            <div className="cart-items">
-              {cart.map((item) => (
-                <div key={item.id} className="cart-item">
-                  <div>
-                    <strong>{item.name}</strong>
-                    <p>Cantidad {item.qty}</p>
+          <aside className="panel">
+            <div className="panel-head">
+              <h2>Portal del local</h2>
+              <div className="chip">Mi tarjeta</div>
+            </div>
+            <div className="product-focus">
+              {selectedProduct ? (
+                <>
+                  <img
+                    src={selectedProduct.imageUrl || "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200"}
+                    alt={selectedProduct.nombre}
+                  />
+                  <h3>{selectedProduct.nombre}</h3>
+                  <p>ID {selectedProduct.id}</p>
+                  <button onClick={() => addProduct(selectedProduct.id, selectedProduct.nombre)}>Agregar al pedido</button>
+                </>
+              ) : (
+                <p className="muted">{loadingMenu ? "Cargando menu..." : "Selecciona una sucursal para cargar menu."}</p>
+              )}
+            </div>
+
+            <div className="products-inline">
+              {visibleProducts.slice(0, 6).map((product) => (
+                <button
+                  key={product.id}
+                  className={`product-pill ${activeProductId === product.id ? "active" : ""}`}
+                  onClick={() => setActiveProductId(product.id)}
+                >
+                  {product.nombre}
+                </button>
+              ))}
+            </div>
+
+            <section className="cart-card">
+              <h3>Pedido</h3>
+              <label>API key</label>
+              <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="x-api-key" />
+              <label>Idempotency key</label>
+              <input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} />
+              <label>Sucursal</label>
+              <select value={selectedBranchSlug} onChange={(event) => setSelectedBranchSlug(event.target.value)}>
+                <option value="">Selecciona</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.slug}>
+                    {branch.nombre}
+                  </option>
+                ))}
+              </select>
+              <label>Nombre cliente</label>
+              <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
+              <label>Telefono</label>
+              <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} />
+              <label>Direccion</label>
+              <input value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
+
+              <div className="cart-items">
+                {cart.map((item) => (
+                  <div key={item.id} className="cart-item">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>Cantidad {item.qty}</p>
+                    </div>
+                    <span>{asCurrency(item.qty * item.unitPrice)}</span>
                   </div>
-                  <span>{asCurrency(item.qty * item.unitPrice)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="total">Total {asCurrency(total)}</div>
-            <div className="actions">
-              <button className="secondary" onClick={() => setCart(cartState.read())}>
-                Refrescar
+                ))}
+              </div>
+              <div className="total">Total {asCurrency(total)}</div>
+              <div className="actions">
+                <button className="secondary" onClick={() => setCart(cartState.read())}>
+                  Refrescar
+                </button>
+                <button className="primary" disabled={submitting} onClick={checkout}>
+                  {submitting ? "Enviando..." : "Confirmar pedido"}
+                </button>
+              </div>
+              <button className="secondary full" onClick={pollStatus}>
+                Consultar estado
               </button>
-              <button className="primary" disabled={submitting} onClick={checkout}>
-                {submitting ? "Enviando..." : "Confirmar pedido"}
-              </button>
-            </div>
-            <button className="secondary full" onClick={pollStatus}>
-              Consultar estado
-            </button>
-            <div className="timeline">
-              {statusTimeline.map((row, index) => (
-                <div key={`${row.at}-${index}`} className="timeline-row">
-                  <span>{row.at}</span>
-                  <strong>{row.status}</strong>
-                </div>
-              ))}
-            </div>
-            <pre className="log">{statusLog.join("\n")}</pre>
-          </section>
-        </aside>
+              <div className="timeline">
+                {statusTimeline.map((row, index) => (
+                  <div key={`${row.at}-${index}`} className="timeline-row">
+                    <span>{row.at}</span>
+                    <strong>{row.status}</strong>
+                  </div>
+                ))}
+              </div>
+              <pre className="log">{statusLog.join("\n")}</pre>
+            </section>
+          </aside>
+        </section>
+
+        <section className="windows-card">
+          <h3>Navegacion por ventanas</h3>
+          <p className="muted">Mapa, explorar, menu, cuenta, pedido e historial con acceso rapido.</p>
+          <div className="windows-grid">
+            {["Mapa", "Explorar", "Menu", "Cuenta", "Pedido", "Historial"].map((item) => (
+              <div key={item} className="window-item">
+                {item}
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );

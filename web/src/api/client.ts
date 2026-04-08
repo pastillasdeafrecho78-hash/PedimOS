@@ -6,7 +6,7 @@ export type Branch = {
 
 export type MenuCatalog = {
   restaurante: Branch;
-  productos: Array<{ id: string; nombre: string }>;
+  productos: Array<{ id: string; nombre: string; imageUrl?: string | null }>;
   tamanos: Array<{ id: string; nombre: string }>;
   modificadores: Array<{ id: string; nombre: string }>;
 };

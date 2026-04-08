@@ -17,6 +17,38 @@ import {
 export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: OrdersRepository): void => {
   const authGuard = new IntegrationAuthGuard(repository);
   const ingestionService = new OrderIngestionService(repository);
+  const servimosBaseUrl = env.SERVIMOS_PUBLIC_BASE_URL?.replace(/\/$/, "");
+
+  const normalize = (value: string): string => value.trim().toLowerCase();
+
+  const getServimosImageMap = async (slug: string): Promise<Map<string, string>> => {
+    if (!servimosBaseUrl) return new Map();
+    try {
+      const response = await fetch(`${servimosBaseUrl}/api/public/menu/${encodeURIComponent(slug)}`);
+      if (!response.ok) return new Map();
+      const payload = (await response.json()) as {
+        success?: boolean;
+        data?: {
+          categorias?: Array<{
+            productos?: Array<{ nombre?: string; imagenUrl?: string | null }>;
+          }>;
+        };
+      };
+      if (!payload.success || !payload.data?.categorias) return new Map();
+      const byName = new Map<string, string>();
+      for (const categoria of payload.data.categorias) {
+        for (const producto of categoria.productos ?? []) {
+          if (producto.nombre && producto.imagenUrl) {
+            byName.set(normalize(producto.nombre), producto.imagenUrl);
+          }
+        }
+      }
+      return byName;
+    } catch (error) {
+      app.log.warn({ error, slug }, "No fue posible cargar imagenes de ServimOS");
+      return new Map();
+    }
+  };
 
   app.get("/", async (_request, reply) => sendWebIndex(reply));
   app.get("/login", async (_request, reply) => sendWebIndex(reply));
@@ -55,9 +87,16 @@ export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: Ord
       if (!catalog) {
         throw canonicalError("branch_not_found", "Sucursal no encontrada o inactiva");
       }
+      const imageMap = await getServimosImageMap(slug);
       return reply.status(200).send({
         success: true,
-        data: catalog
+        data: {
+          ...catalog,
+          productos: catalog.productos.map((product) => ({
+            ...product,
+            imageUrl: imageMap.get(normalize(product.nombre)) ?? product.imageUrl ?? null
+          }))
+        }
       });
     } catch (error) {
       app.log.error({ error, slug }, "No fue posible cargar catalogo publico");
