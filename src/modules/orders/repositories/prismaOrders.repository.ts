@@ -243,11 +243,12 @@ export class PrismaOrdersRepository implements OrdersRepository {
   }
 
   async getNextNumeroComanda(restauranteId: string): Promise<number> {
-    const rows = await this.prisma.$queryRaw<Array<{ next: number }>>(Prisma.sql`
-      select coalesce(max(nullif(regexp_replace("numeroComanda", '[^0-9]', '', 'g'), '')::int), 0) + 1 as next
+    const rows = await this.prisma.$queryRaw<Array<{ next: bigint | number | string }>>(Prisma.sql`
+      select coalesce(max(nullif(regexp_replace("numeroComanda", '[^0-9]', '', 'g'), '')::bigint), 0) + 1 as next
       from "Comanda"
     `);
-    return rows[0]?.next ?? 1;
+    const nextRaw = rows[0]?.next;
+    return nextRaw ? Number(nextRaw) : 1;
   }
 
   async createOrder(params: CreateOrderParams): Promise<CreatedOrderRecord> {
@@ -265,11 +266,11 @@ export class PrismaOrdersRepository implements OrdersRepository {
         throw new Error("No hay usuario activo para crear comandas en esta sucursal");
       }
 
-      const nextNumeroRows = await tx.$queryRaw<Array<{ next: number }>>(Prisma.sql`
-        select coalesce(max(nullif(regexp_replace("numeroComanda", '[^0-9]', '', 'g'), '')::int), 0) + 1 as next
+      const nextNumeroRows = await tx.$queryRaw<Array<{ next: bigint | number | string }>>(Prisma.sql`
+        select coalesce(max(nullif(regexp_replace("numeroComanda", '[^0-9]', '', 'g'), '')::bigint), 0) + 1 as next
         from "Comanda"
       `);
-      const nextNumero = nextNumeroRows[0]?.next ?? 1;
+      const nextNumero = nextNumeroRows[0]?.next ? Number(nextNumeroRows[0].next) : 1;
       const now = new Date();
 
       let clienteId: string | null = null;
