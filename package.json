@@ -6,6 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "dev": "tsx watch src/server.ts",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "postinstall": "prisma generate",

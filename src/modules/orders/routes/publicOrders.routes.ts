@@ -10,35 +10,22 @@ import {
 import type { OrdersRepository } from "../repositories/orders.repository.js";
 import { OrderIngestionService } from "../services/orderIngestion.service.js";
 import {
-  renderCreateOrderPage,
-  renderHomePage,
-  renderIntegrationStatusPage,
-  renderLoginPage,
-  renderRegisterPage
-} from "../../ui/recivimosUi.js";
+  sendWebAsset,
+  sendWebIndex
+} from "../../ui/webArtifact.server.js";
 
 export const registerPublicOrdersRoutes = (app: FastifyInstance, repository: OrdersRepository): void => {
   const authGuard = new IntegrationAuthGuard(repository);
   const ingestionService = new OrderIngestionService(repository);
 
-  app.get("/", async (_request, reply) => {
-    return reply.type("text/html; charset=utf-8").status(200).send(renderHomePage());
-  });
-
-  app.get("/login", async (_request, reply) => {
-    return reply.type("text/html; charset=utf-8").status(200).send(renderLoginPage());
-  });
-
-  app.get("/register", async (_request, reply) => {
-    return reply.type("text/html; charset=utf-8").status(200).send(renderRegisterPage());
-  });
-
-  app.get("/integration-status", async (_request, reply) => {
-    return reply.type("text/html; charset=utf-8").status(200).send(renderIntegrationStatusPage());
-  });
-
-  app.get("/orders/new", async (_request, reply) => {
-    return reply.type("text/html; charset=utf-8").status(200).send(renderCreateOrderPage());
+  app.get("/", async (_request, reply) => sendWebIndex(reply));
+  app.get("/login", async (_request, reply) => sendWebIndex(reply));
+  app.get("/register", async (_request, reply) => sendWebIndex(reply));
+  app.get("/integration-status", async (_request, reply) => sendWebIndex(reply));
+  app.get("/orders/new", async (_request, reply) => sendWebIndex(reply));
+  app.get("/assets/*", async (request, reply) => {
+    const path = (request.params as { "*": string })["*"];
+    return sendWebAsset(reply, `assets/${path}`);
   });
 
   app.get("/health", async (_request, reply) => {
