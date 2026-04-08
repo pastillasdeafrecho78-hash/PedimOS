@@ -377,12 +377,15 @@ export function App() {
       <div className="bg-orbs" />
       <div className="layout-wide">
         <header className="top-nav">
-          <div className="top-nav-row">
+          <div className="top-nav-header">
             <div className="brand-row">
               <div className="badge">PedimOS</div>
-              <strong>{menu?.restaurante?.nombre ?? "Pide lo que se te antoje"}</strong>
+              <div>
+                <strong className="brand-title">{menu?.restaurante?.nombre ?? "Pide lo que se te antoje"}</strong>
+                <p className="brand-subtitle">Tu puerta digital para pedir, reservar y dar seguimiento</p>
+              </div>
             </div>
-                <div className="follow-chip">Cuenta+Reservas v2 activas · Siguenos y descubre promos del dia</div>
+            <div className="follow-chip">Cuenta+Reservas v2 activas · Siguenos y descubre promos del dia</div>
           </div>
           <nav className="tab-grid">
             {tabs.map((tab) => (
@@ -395,14 +398,14 @@ export function App() {
               </button>
             ))}
           </nav>
-          <div className="top-nav-row">
+          <div className="top-nav-toolbar">
             <input
               className="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Buscar sucursal o producto..."
             />
-            <select className="search" value={selectedBranchSlug} onChange={(event) => setSelectedBranchSlug(event.target.value)}>
+            <select className="branch-select" value={selectedBranchSlug} onChange={(event) => setSelectedBranchSlug(event.target.value)}>
               <option value="">Sucursal</option>
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.slug}>
@@ -477,125 +480,149 @@ export function App() {
             {accountError ? <p className="muted">{accountError}</p> : null}
 
             {!account ? (
-              <div className="space-y-3">
-                <p className="muted">Inicia sesion para guardar tu historial y reservar mesa.</p>
-                <input
-                  value={accountNameDraft}
-                  onChange={(event) => setAccountNameDraft(event.target.value)}
-                  placeholder="Nombre completo"
-                />
-                <input
-                  value={accountPhoneDraft}
-                  onChange={(event) => setAccountPhoneDraft(event.target.value)}
-                  placeholder="Telefono"
-                />
-                <input
-                  value={accountEmailDraft}
-                  onChange={(event) => setAccountEmailDraft(event.target.value)}
-                  placeholder="Correo"
-                />
-                <input
-                  type="password"
-                  value={accountPasswordDraft}
-                  onChange={(event) => setAccountPasswordDraft(event.target.value)}
-                  placeholder="Contrasena"
-                />
-                <div className="actions">
-                  <button className="secondary" onClick={() => setAccountRegisterMode((prev) => !prev)}>
-                    {accountRegisterMode ? "Tengo cuenta" : "Crear cuenta"}
-                  </button>
-                  <button className="primary" disabled={accountBusy} onClick={submitAccount}>
-                    {accountBusy ? "Procesando..." : accountRegisterMode ? "Registrarme" : "Entrar"}
-                  </button>
-                  <button className="secondary" onClick={loginWithMeta}>
-                    Entrar con Meta
-                  </button>
+              <div className="account-shell">
+                <div className="account-form-card">
+                  <p className="muted">Inicia sesion para guardar tu historial y reservar mesa.</p>
+                  <div className="form-grid">
+                    <input
+                      value={accountNameDraft}
+                      onChange={(event) => setAccountNameDraft(event.target.value)}
+                      placeholder="Nombre completo"
+                    />
+                    <input
+                      value={accountPhoneDraft}
+                      onChange={(event) => setAccountPhoneDraft(event.target.value)}
+                      placeholder="Telefono"
+                    />
+                    <input
+                      value={accountEmailDraft}
+                      onChange={(event) => setAccountEmailDraft(event.target.value)}
+                      placeholder="Correo"
+                    />
+                    <input
+                      type="password"
+                      value={accountPasswordDraft}
+                      onChange={(event) => setAccountPasswordDraft(event.target.value)}
+                      placeholder="Contrasena"
+                    />
+                  </div>
+                  <div className="actions">
+                    <button className="secondary" onClick={loginWithMeta}>
+                      Entrar con Meta
+                    </button>
+                    <button className="secondary" onClick={() => setAccountRegisterMode((prev) => !prev)}>
+                      {accountRegisterMode ? "Tengo cuenta" : "Crear cuenta"}
+                    </button>
+                    <button className="primary" disabled={accountBusy} onClick={submitAccount}>
+                      {accountBusy ? "Procesando..." : accountRegisterMode ? "Registrarme" : "Entrar"}
+                    </button>
+                  </div>
+                </div>
+                <div className="account-side-card">
+                  <h3>Ventajas de tu cuenta</h3>
+                  <ul>
+                    <li>Historial de pedidos en segundos</li>
+                    <li>Reservaciones sin volver a capturar datos</li>
+                    <li>Vinculacion de pedidos de invitado</li>
+                    <li>Acceso rapido con Meta cuando este configurado</li>
+                  </ul>
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="muted">
-                  {account.nombreCompleto} ({account.email}) - {account.isCommissionFree ? "Sin comision" : "Cliente estandar"}
-                </p>
-                <input
-                  value={accountNameDraft}
-                  onChange={(event) => setAccountNameDraft(event.target.value)}
-                  placeholder="Nombre completo"
-                />
-                <input
-                  value={accountPhoneDraft}
-                  onChange={(event) => setAccountPhoneDraft(event.target.value)}
-                  placeholder="Telefono"
-                />
-                <div className="actions">
-                  <button className="secondary" disabled={accountBusy} onClick={updateProfile}>
-                    Guardar perfil
-                  </button>
-                  <button className="secondary" disabled={accountBusy} onClick={claimGuestOrders}>
-                    Vincular pedidos invitado
-                  </button>
-                  <button className="primary" disabled={accountBusy} onClick={logoutAccount}>
-                    Cerrar sesion
-                  </button>
+              <div className="account-shell">
+                <div className="account-form-card">
+                  <p className="muted">
+                    {account.nombreCompleto} ({account.email}) - {account.isCommissionFree ? "Sin comision" : "Cliente estandar"}
+                  </p>
+                  <div className="form-grid two-up">
+                    <input
+                      value={accountNameDraft}
+                      onChange={(event) => setAccountNameDraft(event.target.value)}
+                      placeholder="Nombre completo"
+                    />
+                    <input
+                      value={accountPhoneDraft}
+                      onChange={(event) => setAccountPhoneDraft(event.target.value)}
+                      placeholder="Telefono"
+                    />
+                  </div>
+                  <div className="actions">
+                    <button className="secondary" disabled={accountBusy} onClick={updateProfile}>
+                      Guardar perfil
+                    </button>
+                    <button className="secondary" disabled={accountBusy} onClick={claimGuestOrders}>
+                      Vincular pedidos invitado
+                    </button>
+                    <button className="primary" disabled={accountBusy} onClick={logoutAccount}>
+                      Cerrar sesion
+                    </button>
+                  </div>
                 </div>
-                <div className="timeline">
-                  {accountOrders.map((row) => (
-                    <div key={row.orderId} className="timeline-row">
-                      <span>{new Date(row.createdAt).toLocaleString("es-MX")}</span>
-                      <strong>
-                        #{row.numeroComanda} - {row.estado} - {asCurrency(row.total)}
-                      </strong>
-                    </div>
-                  ))}
+                <div className="account-side-card">
+                  <h3>Resumen de actividad</h3>
+                  <div className="timeline">
+                    {accountOrders.map((row) => (
+                      <div key={row.orderId} className="timeline-row">
+                        <span>{new Date(row.createdAt).toLocaleString("es-MX")}</span>
+                        <strong>
+                          #{row.numeroComanda} - {row.estado} - {asCurrency(row.total)}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <h3>Tus reservaciones</h3>
-                <div className="actions">
+                <div className="account-reservation-card">
+                  <h3>Tus reservaciones</h3>
+                  <div className="form-grid reservations-grid">
+                    <input
+                      type="datetime-local"
+                      value={reservationDateDraft}
+                      onChange={(event) => setReservationDateDraft(event.target.value)}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={reservationPartyDraft}
+                      onChange={(event) => setReservationPartyDraft(event.target.value)}
+                      placeholder="Personas"
+                    />
+                    <input
+                      type="number"
+                      min={30}
+                      max={360}
+                      value={reservationDurationDraft}
+                      onChange={(event) => setReservationDurationDraft(event.target.value)}
+                      placeholder="Minutos"
+                    />
+                  </div>
                   <input
-                    type="datetime-local"
-                    value={reservationDateDraft}
-                    onChange={(event) => setReservationDateDraft(event.target.value)}
+                    value={reservationNotesDraft}
+                    onChange={(event) => setReservationNotesDraft(event.target.value)}
+                    placeholder="Notas para la reservacion"
                   />
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={reservationPartyDraft}
-                    onChange={(event) => setReservationPartyDraft(event.target.value)}
-                    placeholder="Personas"
-                  />
-                  <input
-                    type="number"
-                    min={30}
-                    max={360}
-                    value={reservationDurationDraft}
-                    onChange={(event) => setReservationDurationDraft(event.target.value)}
-                    placeholder="Minutos"
-                  />
-                </div>
-                <input
-                  value={reservationNotesDraft}
-                  onChange={(event) => setReservationNotesDraft(event.target.value)}
-                  placeholder="Notas para la reservacion"
-                />
-                <button className="secondary" disabled={accountBusy} onClick={createReservation}>
-                  Reservar mesa
-                </button>
-                <div className="timeline">
-                  {accountReservations.map((reservation) => (
-                    <div key={reservation.id} className="timeline-row">
-                      <span>
-                        {new Date(reservation.reservedFor).toLocaleString("es-MX")} · {reservation.partySize} personas
-                      </span>
-                      <strong>
-                        {reservation.status}
-                        {reservation.status !== "CANCELADA" && reservation.status !== "COMPLETADA" ? (
-                          <button className="secondary" onClick={() => cancelReservation(reservation.id)}>
-                            Cancelar
-                          </button>
-                        ) : null}
-                      </strong>
-                    </div>
-                  ))}
+                  <div className="actions">
+                    <button className="secondary" disabled={accountBusy} onClick={createReservation}>
+                      Reservar mesa
+                    </button>
+                  </div>
+                  <div className="timeline">
+                    {accountReservations.map((reservation) => (
+                      <div key={reservation.id} className="timeline-row">
+                        <span>
+                          {new Date(reservation.reservedFor).toLocaleString("es-MX")} · {reservation.partySize} personas
+                        </span>
+                        <div className="timeline-status">
+                          <strong>{reservation.status}</strong>
+                          {reservation.status !== "CANCELADA" && reservation.status !== "COMPLETADA" ? (
+                            <button className="secondary" onClick={() => cancelReservation(reservation.id)}>
+                              Cancelar
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
