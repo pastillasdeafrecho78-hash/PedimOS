@@ -132,6 +132,10 @@ body {
   }
 }
 
+.tab-grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .tab-btn {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
@@ -527,6 +531,12 @@ button:hover {
   margin-bottom: 8px;
 }
 
+.menu-cart-block {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .cart-card label {
   margin-top: 10px;
   display: block;
@@ -604,6 +614,7 @@ button:hover {
 
   .tab-grid,
   .tab-grid-four,
+  .tab-grid-two,
   .products-grid-lite,
   .form-grid,
   .form-grid.two-up,

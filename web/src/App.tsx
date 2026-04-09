@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiClient, type AccountMe, type Branch, type MenuCatalog } from "./api/client";
+import { apiClient, type Branch, type MenuCatalog } from "./api/client";
 import { cartState, type CartItem } from "./state/cart";
 
 const randomExternalOrderId = (): string => `ext-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -10,8 +10,7 @@ const asCurrency = (amount: number): string =>
 const tabs = ["Mapa", "Explorar", "Menu", "Cuenta", "Pedido", "Historial"] as const;
 type TabId = (typeof tabs)[number];
 
-/** Pestañas ocultas en la UI por ahora; la lógica de Explorar/Menú sigue en código. */
-const tabsVisibleInNav = tabs.filter((t) => t !== "Explorar" && t !== "Menu");
+const tabsVisibleInNav: TabId[] = ["Explorar", "Menu"];
 
 const readIntegrationConfig = (): { slug: string } => {
   try {
@@ -33,7 +32,7 @@ const writeIntegrationSlug = (slug: string): void => {
 };
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("Pedido");
+  const [activeTab, setActiveTab] = useState<TabId>("Explorar");
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranchSlug, setSelectedBranchSlug] = useState("");
   const [menu, setMenu] = useState<MenuCatalog | null>(null);
@@ -42,36 +41,15 @@ export function App() {
   const [menuDegraded, setMenuDegraded] = useState(false);
   const [menuError, setMenuError] = useState("");
   const [loadingMenu, setLoadingMenu] = useState(false);
-  const [creatingSession, setCreatingSession] = useState(false);
   const [sessionReadySlug, setSessionReadySlug] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerFirstName, setCustomerFirstName] = useState("");
+  const [customerLastName, setCustomerLastName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [lastOrderId, setLastOrderId] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(randomExternalOrderId());
   const [statusLog, setStatusLog] = useState<string[]>([]);
-  const [statusTimeline, setStatusTimeline] = useState<Array<{ at: string; status: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [account, setAccount] = useState<AccountMe | null>(null);
-  const [accountOrders, setAccountOrders] = useState<
-    Array<{ orderId: string; numeroComanda: string; estado: string; total: number; createdAt: string }>
-  >([]);
-  const [accountLoading, setAccountLoading] = useState(false);
-  const [accountError, setAccountError] = useState("");
-  const [accountRegisterMode, setAccountRegisterMode] = useState(false);
-  const [accountNameDraft, setAccountNameDraft] = useState("");
-  const [accountPhoneDraft, setAccountPhoneDraft] = useState("");
-  const [accountEmailDraft, setAccountEmailDraft] = useState("");
-  const [accountPasswordDraft, setAccountPasswordDraft] = useState("");
-  const [accountBusy, setAccountBusy] = useState(false);
-  const [accountReservations, setAccountReservations] = useState<
-    Array<{ id: string; reservedFor: string; durationMinutes: number; status: string; partySize: number; notes?: string | null }>
-  >([]);
-  const [reservationDateDraft, setReservationDateDraft] = useState("");
-  const [reservationPartyDraft, setReservationPartyDraft] = useState("2");
-  const [reservationDurationDraft, setReservationDurationDraft] = useState("90");
-  const [reservationNotesDraft, setReservationNotesDraft] = useState("");
   const [uiNotice, setUiNotice] = useState("");
 
   useEffect(() => {
@@ -92,7 +70,6 @@ export function App() {
 
   useEffect(() => {
     if (!selectedBranchSlug) return;
-    setCreatingSession(true);
     setSessionReadySlug("");
     setLoadingMenu(true);
     setMenuError("");
@@ -119,40 +96,8 @@ export function App() {
         setMenuError(error instanceof Error ? error.message : "No se pudo cargar el menú.");
       })
       .finally(() => {
-        setCreatingSession(false);
         setLoadingMenu(false);
       });
-  }, [selectedBranchSlug]);
-
-  useEffect(() => {
-    if (activeTab === "Explorar" || activeTab === "Menu") {
-      setActiveTab("Pedido");
-    }
-  }, [activeTab]);
-
-  const refreshAccount = async () => {
-    setAccountLoading(true);
-    setAccountError("");
-    try {
-      const me = await apiClient.accountMe();
-      setAccount(me);
-      setAccountNameDraft(me.nombreCompleto);
-      setAccountPhoneDraft(me.telefono ?? "");
-      const orders = await apiClient.accountOrders();
-      setAccountOrders(orders);
-      const reservations = await apiClient.accountReservations();
-      setAccountReservations(reservations);
-    } catch {
-      setAccount(null);
-      setAccountOrders([]);
-      setAccountReservations([]);
-    } finally {
-      setAccountLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshAccount();
   }, [selectedBranchSlug]);
 
   const total = useMemo(() => cart.reduce((acc, item) => acc + item.qty * item.unitPrice, 0), [cart]);
@@ -179,19 +124,8 @@ export function App() {
   const selectBranchAndGoMenu = (slug: string, nombre: string) => {
     writeIntegrationSlug(slug);
     setSelectedBranchSlug(slug);
-    setActiveTab("Pedido");
+    setActiveTab("Menu");
     setUiNotice(`Sucursal activa: ${nombre}`);
-  };
-
-  const onPedidoBranchChange = (slug: string) => {
-    if (!slug) {
-      setSelectedBranchSlug("");
-      return;
-    }
-    const branch = branches.find((b) => b.slug === slug);
-    writeIntegrationSlug(slug);
-    setSelectedBranchSlug(slug);
-    setUiNotice(branch ? `Sucursal: ${branch.nombre}` : "");
   };
 
   const getProductPrice = (product: (typeof visibleProducts)[number]): number => {
@@ -222,12 +156,15 @@ export function App() {
       setStatusLog(["Agrega productos al carrito."]);
       return;
     }
-    const nameTrim = customerName.trim();
+    const first = customerFirstName.trim();
+    const last = customerLastName.trim();
     const addrTrim = customerAddress.trim();
-    if (!nameTrim || !addrTrim) {
-      setStatusLog(["Completa el nombre (a quien va el pedido) y la direccion de entrega para confirmar."]);
+    if (!first || !last || !addrTrim) {
+      setStatusLog(["Completa nombre, apellido y dirección de entrega para confirmar."]);
       return;
     }
+
+    const fullName = `${first} ${last}`.trim();
 
     setSubmitting(true);
     const currentIdempotency = idempotencyKey.trim() || randomExternalOrderId();
@@ -237,8 +174,8 @@ export function App() {
         tipoPedido: "DELIVERY" as const,
         canal: "EXTERNAL_APP" as const,
         cliente: {
-          nombre: nameTrim,
-          telefono: customerPhone.trim() || "sin telefono",
+          nombre: fullName,
+          telefono: "sin telefono",
           direccion: addrTrim
         },
         items: cart.map((item) => ({
@@ -262,7 +199,6 @@ export function App() {
         JSON.stringify(created, null, 2),
         maybeOrderId ? `OrderId: ${maybeOrderId}` : "No se recibió orderId."
       ]);
-      setStatusTimeline([]);
       cartState.clear();
       setCart([]);
       setIdempotencyKey(randomExternalOrderId());
@@ -270,174 +206,6 @@ export function App() {
       setStatusLog([error instanceof Error ? error.message : "Error al crear pedido."]);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const pollStatus = async () => {
-    if (!lastOrderId) {
-      setStatusLog(["No hay orderId para consultar."]);
-      return;
-    }
-    if (!selectedBranchSlug) {
-      setStatusLog(["Selecciona sucursal para consultar estado."]);
-      return;
-    }
-
-    const lines: string[] = [];
-    const timeline: Array<{ at: string; status: string }> = [];
-    for (let i = 0; i < 6; i++) {
-      try {
-        const response = await apiClient.getOrderStatus({
-          restauranteSlug: selectedBranchSlug,
-          orderId: lastOrderId,
-          idempotencyKey: `poll-${Date.now()}-${i}`
-        });
-        const estado = (response as { data?: { estado?: string } }).data?.estado ?? "n/a";
-        lines.push(`Intento ${i + 1}: estado ${estado}`);
-        timeline.push({ at: new Date().toLocaleTimeString("es-MX"), status: estado });
-      } catch (error) {
-        lines.push(`Intento ${i + 1}: ${error instanceof Error ? error.message : "error"}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-    }
-    setStatusLog(lines);
-    setStatusTimeline(timeline);
-  };
-
-  const submitAccount = async () => {
-    if (!selectedBranchSlug) {
-      setAccountError("Selecciona sucursal antes de iniciar sesion.");
-      return;
-    }
-    if (!accountEmailDraft || !accountPasswordDraft) {
-      setAccountError("Ingresa correo y contrasena.");
-      return;
-    }
-    setAccountBusy(true);
-    setAccountError("");
-    try {
-      if (accountRegisterMode) {
-        await apiClient.accountRegister({
-          slug: selectedBranchSlug,
-          email: accountEmailDraft,
-          password: accountPasswordDraft,
-          nombreCompleto: accountNameDraft || "Cliente PedimOS",
-          telefono: accountPhoneDraft || undefined
-        });
-      } else {
-        await apiClient.accountLogin({
-          slug: selectedBranchSlug,
-          email: accountEmailDraft,
-          password: accountPasswordDraft
-        });
-      }
-      await refreshAccount();
-      setAccountPasswordDraft("");
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No fue posible autenticar.");
-    } finally {
-      setAccountBusy(false);
-    }
-  };
-
-  const updateProfile = async () => {
-    setAccountBusy(true);
-    setAccountError("");
-    try {
-      await apiClient.accountUpdate({
-        nombreCompleto: accountNameDraft,
-        telefono: accountPhoneDraft
-      });
-      await refreshAccount();
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No se pudo guardar perfil.");
-    } finally {
-      setAccountBusy(false);
-    }
-  };
-
-  const logoutAccount = async () => {
-    setAccountBusy(true);
-    setAccountError("");
-    try {
-      await apiClient.accountLogout();
-      setAccount(null);
-      setAccountOrders([]);
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No se pudo cerrar sesion.");
-    } finally {
-      setAccountBusy(false);
-    }
-  };
-
-  const claimGuestOrders = async () => {
-    setAccountBusy(true);
-    setAccountError("");
-    try {
-      const linked = await apiClient.accountClaimGuest({
-        telefono: accountPhoneDraft || customerPhone || undefined,
-        orderIds: lastOrderId ? [lastOrderId] : undefined
-      });
-      await refreshAccount();
-      setStatusLog((prev) => [`Pedidos vinculados a tu cuenta: ${linked}`, ...prev]);
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No se pudieron vincular pedidos.");
-    } finally {
-      setAccountBusy(false);
-    }
-  };
-
-  const loginWithMeta = async () => {
-    if (!selectedBranchSlug) {
-      setAccountError("Selecciona sucursal antes de usar Meta.");
-      return;
-    }
-    setAccountError("");
-    try {
-      const authUrl = await apiClient.metaStart(selectedBranchSlug);
-      if (!authUrl) {
-        setAccountError("Meta login no esta disponible en este entorno.");
-        return;
-      }
-      window.location.href = authUrl;
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No se pudo iniciar Meta login.");
-    }
-  };
-
-  const createReservation = async () => {
-    if (!reservationDateDraft) {
-      setAccountError("Selecciona fecha y hora para reservar.");
-      return;
-    }
-    setAccountBusy(true);
-    setAccountError("");
-    try {
-      await apiClient.createAccountReservation({
-        partySize: Number(reservationPartyDraft),
-        reservedFor: new Date(reservationDateDraft).toISOString(),
-        durationMinutes: Number(reservationDurationDraft),
-        notes: reservationNotesDraft || undefined
-      });
-      setReservationNotesDraft("");
-      await refreshAccount();
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No se pudo crear la reservacion.");
-    } finally {
-      setAccountBusy(false);
-    }
-  };
-
-  const cancelReservation = async (id: string) => {
-    setAccountBusy(true);
-    setAccountError("");
-    try {
-      await apiClient.cancelAccountReservation(id);
-      await refreshAccount();
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "No se pudo cancelar reservacion.");
-    } finally {
-      setAccountBusy(false);
     }
   };
 
@@ -453,12 +221,12 @@ export function App() {
                 <strong className="brand-title">
                   {branchDisplayName || menu?.restaurante?.nombre || "Pide lo que se te antoje"}
                 </strong>
-                <p className="brand-subtitle">Tu puerta digital para pedir, reservar y dar seguimiento</p>
+                <p className="brand-subtitle">Explora locales, arma tu pedido y confirma la entrega</p>
               </div>
             </div>
-            <div className="follow-chip">Cuenta+Reservas v2 activas · Siguenos y descubre promos del dia</div>
+            <div className="follow-chip">Pedidos a domicilio · Elige sucursal en Explorar</div>
           </div>
-          <nav className="tab-grid tab-grid-four">
+          <nav className="tab-grid tab-grid-two">
             {tabsVisibleInNav.map((tab) => (
               <button
                 key={tab}
@@ -476,21 +244,11 @@ export function App() {
                 En: <strong>{branchDisplayName}</strong>
               </span>
             ) : (
-              <p className="muted branch-context-hint">Selecciona la sucursal en la pestaña Pedido.</p>
+              <p className="muted branch-context-hint">Selecciona la sucursal en Explorar.</p>
             )}
           </div>
           {uiNotice ? <div className="ui-notice">{uiNotice}</div> : null}
         </header>
-
-        {activeTab === "Mapa" ? (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Mapa</h2>
-              <span className="muted">{creatingSession ? "Conectando..." : "Listo"}</span>
-            </div>
-            <div className="map-box">Mapa de sucursales</div>
-          </section>
-        ) : null}
 
         {activeTab === "Explorar" ? (
           <section className="panel">
@@ -551,6 +309,14 @@ export function App() {
                     placeholder="Buscar en el menú..."
                   />
                 </div>
+                <p className="muted session-line">Sesión: {sessionReadySlug || "sin sesión activa"}</p>
+                {lastOrderId ? (
+                  <div className="last-order-banner">
+                    <p className="muted">
+                      <strong>Último pedido:</strong> {lastOrderId}
+                    </p>
+                  </div>
+                ) : null}
                 {menuError ? <p className="muted menu-alert">{menuError}</p> : null}
                 {!loadingMenu && catalogProducts.length === 0 && !menuDegraded && !menuError ? (
                   <p className="muted">Este local aún no tiene productos activos en la carta.</p>
@@ -578,322 +344,69 @@ export function App() {
                     </article>
                   ))}
                 </div>
+
+                <div className="menu-cart-block">
+                  <h3 className="pedido-subtitle">Tu carrito</h3>
+                  <div className="cart-items">
+                    {cart.length === 0 ? <p className="muted">Aún no hay productos.</p> : null}
+                    {cart.map((item) => (
+                      <div key={item.id} className="cart-item">
+                        <div>
+                          <strong>{item.name}</strong>
+                          <p>Cantidad {item.qty}</p>
+                        </div>
+                        <span>{asCurrency(item.qty * item.unitPrice)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="total">Total {asCurrency(total)}</div>
+
+                  {cart.length > 0 ? (
+                    <div className="delivery-confirm-card">
+                      <h4 className="pedido-subtitle">Datos de entrega</h4>
+                      <p className="muted confirm-hint">Nombre, apellido y dirección donde llevamos tu pedido.</p>
+                      <label>Nombre</label>
+                      <input
+                        value={customerFirstName}
+                        onChange={(event) => setCustomerFirstName(event.target.value)}
+                        placeholder="Ej. María"
+                        autoComplete="given-name"
+                      />
+                      <label>Apellido</label>
+                      <input
+                        value={customerLastName}
+                        onChange={(event) => setCustomerLastName(event.target.value)}
+                        placeholder="Ej. López"
+                        autoComplete="family-name"
+                      />
+                      <label>Dirección</label>
+                      <input
+                        value={customerAddress}
+                        onChange={(event) => setCustomerAddress(event.target.value)}
+                        placeholder="Calle, número, colonia, referencias"
+                        autoComplete="street-address"
+                      />
+                    </div>
+                  ) : null}
+
+                  <details className="pedido-advanced">
+                    <summary>Avanzado (idempotency)</summary>
+                    <label>Idempotency key</label>
+                    <input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} />
+                  </details>
+
+                  <div className="actions">
+                    <button type="button" className="secondary" onClick={() => setCart(cartState.read())}>
+                      Refrescar carrito
+                    </button>
+                    <button type="button" className="primary" disabled={submitting} onClick={checkout}>
+                      {submitting ? "Enviando..." : "Confirmar pedido"}
+                    </button>
+                  </div>
+                  <pre className="log">{statusLog.join("\n")}</pre>
+                </div>
               </>
             )}
-          </section>
-        ) : null}
-
-        {activeTab === "Cuenta" ? (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Cuenta</h2>
-              <span className="muted">{account ? "Sesion activa" : "Invitado"}</span>
-            </div>
-            {accountLoading ? <p className="muted">Cargando cuenta...</p> : null}
-            {accountError ? <p className="muted">{accountError}</p> : null}
-
-            {!account ? (
-              <div className="account-shell">
-                <div className="account-form-card">
-                  <p className="muted">Inicia sesion para guardar tu historial y reservar mesa.</p>
-                  <div className="form-grid">
-                    <input
-                      value={accountNameDraft}
-                      onChange={(event) => setAccountNameDraft(event.target.value)}
-                      placeholder="Nombre completo"
-                    />
-                    <input
-                      value={accountPhoneDraft}
-                      onChange={(event) => setAccountPhoneDraft(event.target.value)}
-                      placeholder="Telefono"
-                    />
-                    <input
-                      value={accountEmailDraft}
-                      onChange={(event) => setAccountEmailDraft(event.target.value)}
-                      placeholder="Correo"
-                    />
-                    <input
-                      type="password"
-                      value={accountPasswordDraft}
-                      onChange={(event) => setAccountPasswordDraft(event.target.value)}
-                      placeholder="Contrasena"
-                    />
-                  </div>
-                  <div className="actions">
-                    <button className="secondary" onClick={loginWithMeta}>
-                      Entrar con Meta
-                    </button>
-                    <button className="secondary" onClick={() => setAccountRegisterMode((prev) => !prev)}>
-                      {accountRegisterMode ? "Tengo cuenta" : "Crear cuenta"}
-                    </button>
-                    <button className="primary" disabled={accountBusy} onClick={submitAccount}>
-                      {accountBusy ? "Procesando..." : accountRegisterMode ? "Registrarme" : "Entrar"}
-                    </button>
-                  </div>
-                </div>
-                <div className="account-side-card">
-                  <h3>Ventajas de tu cuenta</h3>
-                  <ul>
-                    <li>Historial de pedidos en segundos</li>
-                    <li>Reservaciones sin volver a capturar datos</li>
-                    <li>Vinculacion de pedidos de invitado</li>
-                    <li>Acceso rapido con Meta cuando este configurado</li>
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <div className="account-shell">
-                <div className="account-form-card">
-                  <p className="muted">
-                    {account.nombreCompleto} ({account.email}) - {account.isCommissionFree ? "Sin comision" : "Cliente estandar"}
-                  </p>
-                  <div className="form-grid two-up">
-                    <input
-                      value={accountNameDraft}
-                      onChange={(event) => setAccountNameDraft(event.target.value)}
-                      placeholder="Nombre completo"
-                    />
-                    <input
-                      value={accountPhoneDraft}
-                      onChange={(event) => setAccountPhoneDraft(event.target.value)}
-                      placeholder="Telefono"
-                    />
-                  </div>
-                  <div className="actions">
-                    <button className="secondary" disabled={accountBusy} onClick={updateProfile}>
-                      Guardar perfil
-                    </button>
-                    <button className="secondary" disabled={accountBusy} onClick={claimGuestOrders}>
-                      Vincular pedidos invitado
-                    </button>
-                    <button className="primary" disabled={accountBusy} onClick={logoutAccount}>
-                      Cerrar sesion
-                    </button>
-                  </div>
-                </div>
-                <div className="account-side-card">
-                  <h3>Resumen de actividad</h3>
-                  <div className="timeline">
-                    {accountOrders.map((row) => (
-                      <div key={row.orderId} className="timeline-row">
-                        <span>{new Date(row.createdAt).toLocaleString("es-MX")}</span>
-                        <strong>
-                          #{row.numeroComanda} - {row.estado} - {asCurrency(row.total)}
-                        </strong>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="account-reservation-card">
-                  <h3>Tus reservaciones</h3>
-                  <div className="form-grid reservations-grid">
-                    <input
-                      type="datetime-local"
-                      value={reservationDateDraft}
-                      onChange={(event) => setReservationDateDraft(event.target.value)}
-                    />
-                    <input
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={reservationPartyDraft}
-                      onChange={(event) => setReservationPartyDraft(event.target.value)}
-                      placeholder="Personas"
-                    />
-                    <input
-                      type="number"
-                      min={30}
-                      max={360}
-                      value={reservationDurationDraft}
-                      onChange={(event) => setReservationDurationDraft(event.target.value)}
-                      placeholder="Minutos"
-                    />
-                  </div>
-                  <input
-                    value={reservationNotesDraft}
-                    onChange={(event) => setReservationNotesDraft(event.target.value)}
-                    placeholder="Notas para la reservacion"
-                  />
-                  <div className="actions">
-                    <button className="secondary" disabled={accountBusy} onClick={createReservation}>
-                      Reservar mesa
-                    </button>
-                  </div>
-                  <div className="timeline">
-                    {accountReservations.map((reservation) => (
-                      <div key={reservation.id} className="timeline-row">
-                        <span>
-                          {new Date(reservation.reservedFor).toLocaleString("es-MX")} · {reservation.partySize} personas
-                        </span>
-                        <div className="timeline-status">
-                          <strong>{reservation.status}</strong>
-                          {reservation.status !== "CANCELADA" && reservation.status !== "COMPLETADA" ? (
-                            <button className="secondary" onClick={() => cancelReservation(reservation.id)}>
-                              Cancelar
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-        ) : null}
-
-        {activeTab === "Pedido" ? (
-          <section className="cart-card pedido-panel">
-            <h3>Tu pedido</h3>
-            <label className="field-label-pedido">Sucursal</label>
-            <select
-              className="branch-select-pedido"
-              value={selectedBranchSlug}
-              onChange={(event) => onPedidoBranchChange(event.target.value)}
-            >
-              <option value="">Elige sucursal</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.slug}>
-                  {branch.nombre}
-                </option>
-              ))}
-            </select>
-            <p className="muted session-line">Sesión: {sessionReadySlug || "sin sesión activa"}</p>
-            {lastOrderId ? (
-              <div className="last-order-banner">
-                <p className="muted">
-                  <strong>Último pedido:</strong> {lastOrderId}
-                </p>
-                <p className="muted scope-note">
-                  El seguimiento usa esta sucursal y este ID. Si pediste en otra sucursal, cambiala en Pedido y revisa
-                  Historial; con cuenta, revisa también Cuenta.
-                </p>
-                <button type="button" className="secondary" onClick={() => setActiveTab("Historial")}>
-                  Ver en Historial
-                </button>
-              </div>
-            ) : null}
-
-            {selectedBranchSlug ? (
-              <div className="pedido-catalog-block">
-                <h4 className="pedido-subtitle">Agrega productos</h4>
-                {menuError ? <p className="muted menu-alert">{menuError}</p> : null}
-                {!loadingMenu && catalogProducts.length === 0 && !menuDegraded && !menuError ? (
-                  <p className="muted">Este local aún no tiene productos activos en la carta.</p>
-                ) : null}
-                <input
-                  className="search menu-search-inline"
-                  value={menuQuery}
-                  onChange={(event) => setMenuQuery(event.target.value)}
-                  placeholder="Buscar en el menú..."
-                />
-                {!loadingMenu &&
-                catalogProducts.length > 0 &&
-                visibleProducts.length === 0 &&
-                menuQuery.trim() ? (
-                  <p className="muted">Ningún producto coincide con tu búsqueda.</p>
-                ) : null}
-                {loadingMenu ? <p className="muted">Cargando menú...</p> : null}
-                <div className="products-grid-lite products-grid-pedido">
-                  {visibleProducts.map((product) => (
-                    <article key={product.id} className="product-focus">
-                      <img
-                        src={product.imageUrl || "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200"}
-                        alt={product.nombre}
-                      />
-                      <h3>{product.nombre}</h3>
-                      <p className="muted">Desde {asCurrency(getProductPrice(product))}</p>
-                      <button type="button" onClick={() => addProduct(product.id, product.nombre)}>
-                        Agregar
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <h4 className="pedido-subtitle">Tu carrito</h4>
-            <div className="cart-items">
-              {cart.length === 0 ? <p className="muted">Aún no hay productos.</p> : null}
-              {cart.map((item) => (
-                <div key={item.id} className="cart-item">
-                  <div>
-                    <strong>{item.name}</strong>
-                    <p>Cantidad {item.qty}</p>
-                  </div>
-                  <span>{asCurrency(item.qty * item.unitPrice)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="total">Total {asCurrency(total)}</div>
-
-            {cart.length > 0 ? (
-              <div className="delivery-confirm-card">
-                <h4 className="pedido-subtitle">Confirmar entrega</h4>
-                <p className="muted confirm-hint">Completa estos datos para enviar tu pedido a domicilio.</p>
-                <label>Nombre (a quien va el pedido)</label>
-                <input
-                  value={customerName}
-                  onChange={(event) => setCustomerName(event.target.value)}
-                  placeholder="Ej. María López"
-                  autoComplete="name"
-                />
-                <label>Dirección donde llevamos tu pedido</label>
-                <input
-                  value={customerAddress}
-                  onChange={(event) => setCustomerAddress(event.target.value)}
-                  placeholder="Calle, número, colonia, referencias"
-                  autoComplete="street-address"
-                />
-                <label>Teléfono (opcional)</label>
-                <input
-                  value={customerPhone}
-                  onChange={(event) => setCustomerPhone(event.target.value)}
-                  placeholder="Para avisarte si hace falta"
-                  autoComplete="tel"
-                />
-              </div>
-            ) : null}
-
-            <details className="pedido-advanced">
-              <summary>Avanzado (idempotency)</summary>
-              <label>Idempotency key</label>
-              <input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} />
-            </details>
-
-            <div className="actions">
-              <button type="button" className="secondary" onClick={() => setCart(cartState.read())}>
-                Refrescar carrito
-              </button>
-              <button type="button" className="primary" disabled={submitting} onClick={checkout}>
-                {submitting ? "Enviando..." : "Confirmar pedido"}
-              </button>
-            </div>
-            <pre className="log">{statusLog.join("\n")}</pre>
-          </section>
-        ) : null}
-
-        {activeTab === "Historial" ? (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Historial</h2>
-              <button type="button" className="secondary" onClick={pollStatus}>
-                Consultar estado
-              </button>
-            </div>
-            <p className="muted scope-note">
-              Consulta el estado del último pedido guardado en este dispositivo para la sucursal seleccionada (
-              {branchDisplayName || selectedBranchSlug || "ninguna"}). Con sesión en Cuenta verás más pedidos.
-            </p>
-            <div className="timeline">
-              {statusTimeline.map((row, index) => (
-                <div key={`${row.at}-${index}`} className="timeline-row">
-                  <span>{row.at}</span>
-                  <strong>{row.status}</strong>
-                </div>
-              ))}
-            </div>
-            <pre className="log">{statusLog.join("\n")}</pre>
           </section>
         ) : null}
       </div>
