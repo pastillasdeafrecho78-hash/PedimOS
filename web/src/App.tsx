@@ -21,12 +21,22 @@ const readIntegrationConfig = (): { slug: string } => {
   }
 };
 
+const writeIntegrationSlug = (slug: string): void => {
+  try {
+    localStorage.setItem("pedimos.integration.v1", JSON.stringify({ slug }));
+  } catch {
+    /* ignore */
+  }
+};
+
 export function App() {
   const [activeTab, setActiveTab] = useState<TabId>("Explorar");
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranchSlug, setSelectedBranchSlug] = useState("");
   const [menu, setMenu] = useState<MenuCatalog | null>(null);
-  const [query, setQuery] = useState("");
+  const [exploreQuery, setExploreQuery] = useState("");
+  const [menuQuery, setMenuQuery] = useState("");
+  const [menuDegraded, setMenuDegraded] = useState(false);
   const [menuError, setMenuError] = useState("");
   const [loadingMenu, setLoadingMenu] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
@@ -69,12 +79,13 @@ export function App() {
       .getBranches()
       .then((loaded) => {
         setBranches(loaded);
-        if (!cfg.slug && loaded.length) {
-          setSelectedBranchSlug(loaded[0]?.slug ?? "");
-        }
       })
       .catch(() => setBranches([]));
   }, []);
+
+  useEffect(() => {
+    setMenuQuery("");
+  }, [selectedBranchSlug]);
 
   useEffect(() => {
     if (!selectedBranchSlug) return;
@@ -82,6 +93,7 @@ export function App() {
     setSessionReadySlug("");
     setLoadingMenu(true);
     setMenuError("");
+    setMenuDegraded(false);
     void apiClient
       .startPublicSession(selectedBranchSlug)
       .then(() => {
@@ -90,10 +102,17 @@ export function App() {
       })
       .then(({ data, degraded }) => {
         setMenu(data);
-        if (degraded) setMenuError("Algunos elementos del menú no están disponibles por ahora.");
+        const isDegraded = Boolean(degraded);
+        setMenuDegraded(isDegraded);
+        if (isDegraded) {
+          setMenuError("No pudimos cargar el menú completo. Intenta de nuevo en un momento.");
+        } else {
+          setMenuError("");
+        }
       })
       .catch((error) => {
         setMenu(null);
+        setMenuDegraded(false);
         setMenuError(error instanceof Error ? error.message : "No se pudo cargar el menú.");
       })
       .finally(() => {
@@ -129,17 +148,31 @@ export function App() {
 
   const total = useMemo(() => cart.reduce((acc, item) => acc + item.qty * item.unitPrice, 0), [cart]);
   const filteredBranches = useMemo(() => {
-    const term = query.trim().toLowerCase();
+    const term = exploreQuery.trim().toLowerCase();
     if (!term) return branches;
     return branches.filter((branch) => branch.nombre.toLowerCase().includes(term) || branch.slug.toLowerCase().includes(term));
-  }, [branches, query]);
+  }, [branches, exploreQuery]);
+  const catalogProducts = menu?.productos ?? [];
   const visibleProducts = useMemo(() => {
-    const products = menu?.productos ?? [];
-    const term = query.trim().toLowerCase();
-    if (!term) return products;
-    return products.filter((product) => product.nombre.toLowerCase().includes(term));
-  }, [menu?.productos, query]);
-  const selectedProduct = visibleProducts[0] ?? null;
+    const term = menuQuery.trim().toLowerCase();
+    if (!term) return catalogProducts;
+    return catalogProducts.filter((product) => product.nombre.toLowerCase().includes(term));
+  }, [catalogProducts, menuQuery]);
+  const branchDisplayName = useMemo(() => {
+    if (!selectedBranchSlug) return "";
+    return (
+      branches.find((b) => b.slug === selectedBranchSlug)?.nombre ??
+      menu?.restaurante?.nombre ??
+      selectedBranchSlug
+    );
+  }, [branches, menu?.restaurante?.nombre, selectedBranchSlug]);
+
+  const selectBranchAndGoMenu = (slug: string, nombre: string) => {
+    writeIntegrationSlug(slug);
+    setSelectedBranchSlug(slug);
+    setActiveTab("Menu");
+    setUiNotice(`Sucursal activa: ${nombre}`);
+  };
 
   const getProductPrice = (product: (typeof visibleProducts)[number]): number => {
     const firstSize = product.tamanos?.[0];
@@ -390,7 +423,9 @@ export function App() {
             <div className="brand-row">
               <div className="badge">PedimOS</div>
               <div>
-                <strong className="brand-title">{menu?.restaurante?.nombre ?? "Pide lo que se te antoje"}</strong>
+                <strong className="brand-title">
+                  {branchDisplayName || menu?.restaurante?.nombre || "Pide lo que se te antoje"}
+                </strong>
                 <p className="brand-subtitle">Tu puerta digital para pedir, reservar y dar seguimiento</p>
               </div>
             </div>
@@ -407,28 +442,19 @@ export function App() {
               </button>
             ))}
           </nav>
-          <div className="top-nav-toolbar">
-            <input
-              className="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar sucursal o producto..."
-            />
-            <select
-              className="branch-select"
-              value={selectedBranchSlug}
-              onChange={(event) => {
-                setSelectedBranchSlug(event.target.value);
-                setActiveTab("Menu");
-              }}
-            >
-              <option value="">Sucursal</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.slug}>
-                  {branch.nombre}
-                </option>
-              ))}
-            </select>
+          <div className="top-nav-branch-bar">
+            {selectedBranchSlug ? (
+              <>
+                <span className="branch-context-label">
+                  En: <strong>{branchDisplayName}</strong>
+                </span>
+                <button type="button" className="secondary branch-change-btn" onClick={() => setActiveTab("Explorar")}>
+                  Cambiar sucursal
+                </button>
+              </>
+            ) : (
+              <p className="muted branch-context-hint">Elige un local en Explorar para ver el menú y armar tu pedido.</p>
+            )}
           </div>
           {uiNotice ? <div className="ui-notice">{uiNotice}</div> : null}
         </header>
@@ -449,6 +475,12 @@ export function App() {
               <h2>Explorar</h2>
               <span className="muted">Elige un local</span>
             </div>
+            <input
+              className="search explore-search"
+              value={exploreQuery}
+              onChange={(event) => setExploreQuery(event.target.value)}
+              placeholder="Buscar por nombre o slug de sucursal..."
+            />
             <div className="list">
               {filteredBranches.map((branch) => (
                 <article key={branch.id} className={`branch-card ${selectedBranchSlug === branch.slug ? "active" : ""}`}>
@@ -456,13 +488,7 @@ export function App() {
                     <h3>{branch.nombre}</h3>
                     <p>{branch.slug}</p>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSelectedBranchSlug(branch.slug);
-                      setActiveTab("Menu");
-                      setUiNotice(`Sucursal activa: ${branch.nombre}`);
-                    }}
-                  >
+                  <button type="button" onClick={() => selectBranchAndGoMenu(branch.slug, branch.nombre)}>
                     Entrar
                   </button>
                 </article>
@@ -473,26 +499,64 @@ export function App() {
 
         {activeTab === "Menu" ? (
           <section className="panel">
-            <div className="panel-head">
-              <h2>Menu</h2>
-              <span className="muted">
-                {loadingMenu ? "Cargando..." : `${visibleProducts.length} productos`}
-              </span>
-            </div>
-            {menuError ? <p className="muted">{menuError}</p> : null}
-            <div className="products-grid-lite">
-              {visibleProducts.map((product) => (
-                <article key={product.id} className="product-focus">
-                  <img
-                    src={product.imageUrl || "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200"}
-                    alt={product.nombre}
+            {!selectedBranchSlug ? (
+              <>
+                <div className="panel-head">
+                  <h2>Menu</h2>
+                </div>
+                <p className="muted">Primero elige una sucursal en Explorar.</p>
+                <button type="button" className="primary" onClick={() => setActiveTab("Explorar")}>
+                  Ir a Explorar
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="panel-head menu-panel-head">
+                  <div>
+                    <h2>Menu</h2>
+                    <span className="muted">
+                      {loadingMenu ? "Cargando..." : `${visibleProducts.length} productos mostrados`}
+                      {!loadingMenu && catalogProducts.length !== visibleProducts.length && menuQuery.trim()
+                        ? ` · ${catalogProducts.length} en la carta`
+                        : null}
+                    </span>
+                  </div>
+                  <input
+                    className="search menu-search"
+                    value={menuQuery}
+                    onChange={(event) => setMenuQuery(event.target.value)}
+                    placeholder="Buscar en el menú..."
                   />
-                  <h3>{product.nombre}</h3>
-                  <p className="muted">Desde {asCurrency(getProductPrice(product))}</p>
-                  <button onClick={() => addProduct(product.id, product.nombre)}>Agregar</button>
-                </article>
-              ))}
-            </div>
+                </div>
+                {menuError ? <p className="muted menu-alert">{menuError}</p> : null}
+                {!loadingMenu && catalogProducts.length === 0 && !menuDegraded && !menuError ? (
+                  <p className="muted">Este local aún no tiene productos activos en la carta.</p>
+                ) : null}
+                {!loadingMenu &&
+                catalogProducts.length > 0 &&
+                visibleProducts.length === 0 &&
+                menuQuery.trim() ? (
+                  <p className="muted">
+                    Ningún producto coincide con tu búsqueda. Prueba otro término o borra el filtro del menú.
+                  </p>
+                ) : null}
+                <div className="products-grid-lite">
+                  {visibleProducts.map((product) => (
+                    <article key={product.id} className="product-focus">
+                      <img
+                        src={product.imageUrl || "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200"}
+                        alt={product.nombre}
+                      />
+                      <h3>{product.nombre}</h3>
+                      <p className="muted">Desde {asCurrency(getProductPrice(product))}</p>
+                      <button type="button" onClick={() => addProduct(product.id, product.nombre)}>
+                        Agregar
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         ) : null}
 
@@ -659,6 +723,20 @@ export function App() {
           <section className="cart-card">
             <h3>Tu pedido</h3>
             <p className="muted">Sesión: {sessionReadySlug || "sin sesión activa"}</p>
+            {lastOrderId ? (
+              <div className="last-order-banner">
+                <p className="muted">
+                  <strong>Último pedido:</strong> {lastOrderId}
+                </p>
+                <p className="muted scope-note">
+                  El seguimiento usa esta sucursal y este ID. Si pediste en otra sucursal, ve a Explorar, elige esa
+                  sucursal y consulta en Historial; con cuenta, revisa también Cuenta.
+                </p>
+                <button type="button" className="secondary" onClick={() => setActiveTab("Historial")}>
+                  Ver en Historial
+                </button>
+              </div>
+            ) : null}
             <label>Idempotency key</label>
             <input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} />
             <label>Nombre</label>
@@ -695,10 +773,14 @@ export function App() {
           <section className="panel">
             <div className="panel-head">
               <h2>Historial</h2>
-              <button className="secondary" onClick={pollStatus}>
+              <button type="button" className="secondary" onClick={pollStatus}>
                 Consultar estado
               </button>
             </div>
+            <p className="muted scope-note">
+              Consulta el estado del último pedido guardado en este dispositivo para la sucursal seleccionada (
+              {branchDisplayName || selectedBranchSlug || "ninguna"}). Con sesión en Cuenta verás más pedidos.
+            </p>
             <div className="timeline">
               {statusTimeline.map((row, index) => (
                 <div key={`${row.at}-${index}`} className="timeline-row">
